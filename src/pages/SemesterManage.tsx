@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, DatePicker, Switch, message, Popconfirm, Space, Tag, Select, Card, Typography } from 'antd'
+import { Table, Button, Modal, Form, Input, DatePicker, Switch, message, Popconfirm, Space, Tag, Card, Typography, Checkbox } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
@@ -294,11 +294,13 @@ function SemesterManage() {
         {editingScheduleId ? (
           <Form form={scheduleForm} layout="vertical" onFinish={handleUpdateSchedule}>
             <Form.Item name="item_ids" label="考核项目" rules={[{ required: true, message: '请选择考核项目' }]}>
-              <Select mode="multiple" placeholder="请选择考核项目">
-                {assessmentItems.map((item) => (
-                  <Select.Option key={item.id} value={item.id}>{item.item_name}</Select.Option>
-                ))}
-              </Select>
+              <Checkbox.Group>
+                <Space direction="vertical">
+                  {assessmentItems.map((item) => (
+                    <Checkbox key={item.id} value={item.id}>{item.item_name}</Checkbox>
+                  ))}
+                </Space>
+              </Checkbox.Group>
             </Form.Item>
             <Form.Item name="is_valid" label="状态" valuePropName="checked">
               <Switch checkedChildren="有效" unCheckedChildren="无效" />

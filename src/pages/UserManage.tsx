@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Typography, Card } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Typography, Card, Tag } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { User, Org } from '../types'
@@ -96,8 +96,8 @@ function UserManage() {
       const orgId = parseInt(orgIdStr)
       const role = parseInt(roleStr) || 0
 
-      if (!name || !email) {
-        errors.push(`第 ${index + 1} 行：姓名和邮箱不能为空`)
+      if (!name || !phone) {
+        errors.push(`第 ${index + 1} 行：姓名和手机号不能为空`)
         return
       }
 
@@ -228,14 +228,39 @@ function UserManage() {
         ]}
       >
         <Card size="small" style={{ marginBottom: 16 }}>
-          <Text type="secondary">格式说明：每行一条记录，列之间用 Tab 分隔。格式：姓名、邮箱、手机号、组织ID、角色（0=成员，1=填报人，2=管理员）</Text>
-          <div style={{ marginTop: 8 }}>
-            <Text type="secondary">示例：</Text>
-            <pre style={{ fontSize: 12, background: '#f5f5f5', padding: 8, borderRadius: 4 }}>
-姓名	邮箱	手机号	组织ID	角色
-张三	zhangsan@example.com	13800138000	1	0
-李四	lisi@example.com	13900139000	2	1
-            </pre>
+          <Text type="secondary">格式说明：每行一条记录，列之间用 Tab 分隔。手机号必填，邮箱可选。</Text>
+          <div style={{ marginTop: 12 }}>
+            <Text type="secondary">模板示例：</Text>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f5f5f5' }}>
+                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>姓名</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>邮箱<Tag color="default" style={{ marginLeft: 4, fontSize: 10 }}>可选</Tag></th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', color: 'red' }}>手机号*</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>组织ID</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>角色</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>张三</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>zhangsan@example.com</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>13800138000</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>1</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>0</td>
+                </tr>
+                <tr style={{ background: '#fafafa' }}>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>李四</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}></td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>13900139000</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>2</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>1</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+              角色说明：0=成员，1=填报人，2=管理员
+            </div>
           </div>
         </Card>
         <Input.TextArea rows={10} value={batchText} onChange={(e) => setBatchText(e.target.value)} placeholder="请粘贴 Excel 数据（每行一条记录，Tab 分隔列）" />
