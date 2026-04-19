@@ -1,24 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Card, Table, Select, Row, Col, Typography, Tag, message } from 'antd'
 import { TrophyOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
-import weekOfYear from 'dayjs/plugin/weekOfYear'
 import type { Semester } from '../types'
 
-dayjs.extend(weekOfYear)
-
 const { Title, Text } = Typography
+
+/** 根据学期开始日期计算某日期在学期内的周次（从1开始） */
+function getSemesterWeek(date: dayjs.Dayjs, semesterStart: dayjs.Dayjs): number {
+  const diff = date.diff(semesterStart, 'day')
+  if (diff < 0) return 0
+  return Math.floor(diff / 7) + 1
+}
+
+/** 获取指定学期周次的起止日期 */
+function getSemesterWeekRange(
+  semesterStart: dayjs.Dayjs,
+  semesterWeek: number
+): { start: dayjs.Dayjs; end: dayjs.Dayjs } {
+  const start = semesterStart.add((semesterWeek - 1) * 7, 'day')
+  const end = start.add(6, 'day')
+  return { start, end }
+}
+
+/** 获取学期总周数 */
+function getSemesterTotalWeeks(semesterStart: dayjs.Dayjs, semesterEnd: dayjs.Dayjs): number {
+  return getSemesterWeek(semesterEnd, semesterStart)
+}
 
 function WeeklyRanking() {
   const [loading, setLoading] = useState(false)
   const [semesters, setSemesters] = useState<Semester[]>([])
   const [selectedSemester, setSelectedSemester] = useState<number | null>(null)
   const [weekSummary, setWeekSummary] = useState<any[]>([])
-  const [selectedYear, setSelectedYear] = useState(dayjs().year())
-  const [selectedWeek, setSelectedWeek] = useState(dayjs().week())
+  // 存储"学期周次"（从1开始）
+  const [selectedSemesterWeek, setSelectedSemesterWeek] = useState<number>(1)
 
-  const currentWeekKey = `${selectedYear}-W${String(selectedWeek).padStart(2, '0')}`
+  // 当前选中学期对象
+  const currentSemester = useMemo(
+    () => semesters.find((s) => s.id === selectedSemester) || null,
+    [semesters, selectedSemester]
+  )
 
   useEffect(() => {
     fetchSemesters()
@@ -28,31 +51,39 @@ function WeeklyRanking() {
     if (selectedSemester) {
       fetchWeekSummary()
     }
-  }, [selectedSemester, currentWeekKey])
+  }, [selectedSemester, selectedSemesterWeek])
 
   const fetchSemesters = async () => {
     const { data } = await supabase.from('semester').select('*').order('id', { ascending: false })
     if (data) {
       setSemesters(data)
       const current = data.find((s: Semester) => s.is_current === 1)
-      if (current) setSelectedSemester(current.id)
-      else if (data.length > 0) setSelectedSemester(data[0].id)
+      if (current) {
+        setSelectedSemester(current.id)
+        // 用学期当前周次初始化
+        const semesterStart = dayjs(current.start_date)
+        const week = getSemesterWeek(dayjs(), semesterStart)
+        setSelectedSemesterWeek(week > 0 ? week : 1)
+      } else if (data.length > 0) {
+        setSelectedSemester(data[0].id)
+      }
     }
   }
 
   const fetchWeekSummary = async () => {
+    if (!currentSemester) return
     setLoading(true)
     setWeekSummary([])
 
-    const weekStart = dayjs().year(selectedYear).week(selectedWeek).startOf('week').format('YYYY-MM-DD')
-    const weekEnd = dayjs().year(selectedYear).week(selectedWeek).endOf('week').format('YYYY-MM-DD')
+    const semesterStart = dayjs(currentSemester.start_date)
+    const { start: weekStart, end: weekEnd } = getSemesterWeekRange(semesterStart, selectedSemesterWeek)
 
     const { data: attendanceData } = await supabase
       .from('attendance')
       .select('*, org:org_id(*, area:area_id(area_name))')
       .eq('semester_id', selectedSemester)
-      .gte('attendance_date', weekStart)
-      .lte('attendance_date', weekEnd)
+      .gte('attendance_date', weekStart.format('YYYY-MM-DD'))
+      .lte('attendance_date', weekEnd.format('YYYY-MM-DD'))
 
     if (!attendanceData || attendanceData.length === 0) {
       message.info('本周暂无考勤数据')
@@ -106,6 +137,15 @@ function WeeklyRanking() {
 
   const groupRanking = weekSummary.filter((item) => item.org_level?.group_name)
 
+  // 根据学期日期范围生成学期周次选项
+  const semesterWeekOptions = useMemo(() => {
+    if (!currentSemester) return []
+    const start = dayjs(currentSemester.start_date)
+    const end = dayjs(currentSemester.end_date)
+    const totalWeeks = getSemesterTotalWeeks(start, end)
+    return Array.from({ length: totalWeeks }, (_, i) => i + 1)
+  }, [currentSemester])
+
   const groupColumns = [
     {
       title: '排名',
@@ -127,21 +167,28 @@ function WeeklyRanking() {
     },
   ]
 
-  const yearOptions = Array.from({ length: 3 }, (_, i) => dayjs().year() - i)
-  const weekOptions = Array.from({ length: 52 }, (_, i) => i + 1)
-
   return (
     <div>
       <Title level={3}>周排名光荣榜</Title>
 
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={16}>
-          <Col span={8}>
+          <Col span={12}>
             <Select
               placeholder="选择学期"
               style={{ width: '100%' }}
               value={selectedSemester}
-              onChange={setSelectedSemester}
+              onChange={(val) => {
+                setSelectedSemester(val)
+                // 切换学期时重置到当前周
+                const sem = semesters.find((s) => s.id === val)
+                if (sem) {
+                  const semStart = dayjs(sem.start_date)
+                  const now = dayjs()
+                  const week = getSemesterWeek(now, semStart)
+                  setSelectedSemesterWeek(week > 0 ? week : 1)
+                }
+              }}
             >
               {semesters.map((s) => (
                 <Select.Option key={s.id} value={s.id}>
@@ -150,30 +197,21 @@ function WeeklyRanking() {
               ))}
             </Select>
           </Col>
-          <Col span={8}>
-            <Select
-              placeholder="选择年份"
-              style={{ width: '100%' }}
-              value={selectedYear}
-              onChange={setSelectedYear}
-            >
-              {yearOptions.map((y) => (
-                <Select.Option key={y} value={y}>{y} 年</Select.Option>
-              ))}
-            </Select>
-          </Col>
-          <Col span={8}>
+          <Col span={12}>
             <Select
               placeholder="选择周次"
               style={{ width: '100%' }}
-              value={selectedWeek}
-              onChange={setSelectedWeek}
+              value={selectedSemesterWeek}
+              onChange={setSelectedSemesterWeek}
             >
-              {weekOptions.map((w) => (
-                <Select.Option key={w} value={w}>
-                  第 {w} 周 ({dayjs().year(selectedYear).week(w).startOf('week').format('MM/DD')}-{dayjs().year(selectedYear).week(w).endOf('week').format('MM/DD')})
-                </Select.Option>
-              ))}
+              {semesterWeekOptions.map((w) => {
+                const { start, end } = getSemesterWeekRange(dayjs(currentSemester?.start_date), w)
+                return (
+                  <Select.Option key={w} value={w}>
+                    学期第 {w} 周 ({start.format('MM/DD')}-{end.format('MM/DD')})
+                  </Select.Option>
+                )
+              })}
             </Select>
           </Col>
         </Row>
