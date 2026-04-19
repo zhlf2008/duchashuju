@@ -32,6 +32,7 @@ function WeeklyRanking() {
       setSemesters(data)
       const current = data.find((s: Semester) => s.is_current === 1)
       if (current) setSelectedSemester(current.id)
+      else if (data.length > 0) setSelectedSemester(data[0].id)
     }
   }
 
