@@ -39,7 +39,7 @@ function UserManage() {
     if (data) setOrgs(data)
   }
 
-  const handleAdd = async (values: { name: string; email: string; phone?: string; job_title?: string; org_id: number; role: number }) => {
+  const handleAdd = async (values: { name: string; email?: string; phone: string; job_title?: string; org_id: number; role: number }) => {
     const { error } = await supabase.from('users').insert([values])
     if (error) {
       message.error('添加失败: ' + error.message)
@@ -51,7 +51,7 @@ function UserManage() {
     }
   }
 
-  const handleEdit = async (values: { name: string; email: string; phone?: string; job_title?: string; org_id: number; role: number }) => {
+  const handleEdit = async (values: { name: string; email?: string; phone: string; job_title?: string; org_id: number; role: number }) => {
     if (!editingId) return
     const { error } = await supabase.from('users').update(values).eq('id', editingId)
     if (error) {
@@ -86,13 +86,13 @@ function UserManage() {
     const errors: string[] = []
 
     lines.forEach((line, index) => {
-      const parts = line.split('\t').map((p) => p.trim())
+      const parts = line.split(/[\t,]/).map((p) => p.trim())
       if (parts.length < 4) {
-        errors.push(`第 ${index + 1} 行格式错误：需要至少4列（姓名、邮箱、手机号、组织ID、角色）`)
+        errors.push(`第 ${index + 1} 行格式错误：需要至少4列（姓名、手机号、组织ID、角色）`)
         return
       }
 
-      const [name, email, phone, orgIdStr, roleStr] = parts
+      const [name, phone, orgIdStr, roleStr, email] = parts
       const orgId = parseInt(orgIdStr)
       const role = parseInt(roleStr) || 0
 
@@ -106,7 +106,7 @@ function UserManage() {
         return
       }
 
-      users.push({ name, email, phone, org_id: orgId, role })
+      users.push({ name, phone, org_id: orgId, role, email: email || undefined })
     })
 
     if (errors.length > 0) {
@@ -126,12 +126,12 @@ function UserManage() {
   }
 
   const downloadTemplate = () => {
-    const template = '姓名\t邮箱\t手机号\t组织ID\t角色\n张三\tzhangsan@example.com\t13800138000\t1\t0'
-    const blob = new Blob([template], { type: 'text/plain' })
+    const template = '姓名,邮箱,手机号,组织ID,角色\n张三,zhangsan@example.com,13800138000,1,0\n李四,,13900139000,2,1'
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = '人员导入模板.txt'
+    a.download = '人员导入模板.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -192,11 +192,11 @@ function UserManage() {
           <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input placeholder="请输入姓名" />
           </Form.Item>
-          <Form.Item name="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '请输入有效邮箱' }]}>
-            <Input placeholder="用于登录的邮箱" />
+          <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
+            <Input placeholder="手机号" />
           </Form.Item>
-          <Form.Item name="phone" label="手机号">
-            <Input placeholder="手机号（可选）" />
+          <Form.Item name="email" label="邮箱">
+            <Input placeholder="邮箱（可选）" />
           </Form.Item>
           <Form.Item name="job_title" label="职务">
             <Input placeholder="职务（可选）" />
@@ -228,42 +228,44 @@ function UserManage() {
         ]}
       >
         <Card size="small" style={{ marginBottom: 16 }}>
-          <Text type="secondary">格式说明：每行一条记录，列之间用 Tab 分隔。手机号必填，邮箱可选。</Text>
+          <Text type="secondary">格式说明：每行一条记录，列之间用 Tab 或逗号分隔。手机号必填，邮箱可选。</Text>
           <div style={{ marginTop: 12 }}>
-            <Text type="secondary">模板示例：</Text>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: '#f5f5f5' }}>
-                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>姓名</th>
-                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>邮箱<Tag color="default" style={{ marginLeft: 4, fontSize: 10 }}>可选</Tag></th>
-                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', color: 'red' }}>手机号*</th>
-                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>组织ID</th>
-                  <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>角色</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>张三</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>zhangsan@example.com</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>13800138000</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>1</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>0</td>
-                </tr>
-                <tr style={{ background: '#fafafa' }}>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>李四</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}></td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>13900139000</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>2</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>1</td>
-                </tr>
-              </tbody>
-            </table>
+            <Text type="secondary">模板示例（复制到下方文本框）：</Text>
+            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 500 }}>
+                <thead>
+                  <tr style={{ background: '#f5f5f5' }}>
+                    <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>姓名</th>
+                    <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>邮箱<Tag color="default" style={{ marginLeft: 4, fontSize: 10 }}>可选</Tag></th>
+                    <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap', color: 'red' }}>手机号*</th>
+                    <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>组织ID</th>
+                    <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>角色</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>张三</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>zhangsan@example.com</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>13800138000</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>1</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>0</td>
+                  </tr>
+                  <tr style={{ background: '#fafafa' }}>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>李四</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}></td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>13900139000</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>2</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>1</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
               角色说明：0=成员，1=填报人，2=管理员
             </div>
           </div>
         </Card>
-        <Input.TextArea rows={10} value={batchText} onChange={(e) => setBatchText(e.target.value)} placeholder="请粘贴 Excel 数据（每行一条记录，Tab 分隔列）" />
+        <Input.TextArea rows={10} value={batchText} onChange={(e) => setBatchText(e.target.value)} placeholder="从 Excel 复制数据粘贴到此处（支持 Tab 或逗号分隔）" />
       </Modal>
     </div>
   )

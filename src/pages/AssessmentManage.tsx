@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Switch, message, Popconfirm, Space, Tag } from 'antd'
+import { Table, Button, Modal, Form, Input, Switch, message, Popconfirm, Space, Tag, Checkbox } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { AssessmentItem } from '../types'
@@ -10,6 +10,7 @@ function AssessmentManage() {
   const [modalVisible, setModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form] = Form.useForm()
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   useEffect(() => {
     fetchData()
@@ -68,13 +69,55 @@ function AssessmentManage() {
     }
   }
 
+  const handleBatchSetTemplate = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要设置的考核项目')
+      return
+    }
+    const { error } = await supabase
+      .from('assessment_item')
+      .update({ is_template: 1 })
+      .in('id', selectedRowKeys)
+    if (error) {
+      message.error('批量设置失败: ' + error.message)
+    } else {
+      message.success(`已成功设置 ${selectedRowKeys.length} 个项目为模板`)
+      setSelectedRowKeys([])
+      fetchData()
+    }
+  }
+
+  const handleToggleTemplate = async (id: number, currentStatus: number) => {
+    const { error } = await supabase
+      .from('assessment_item')
+      .update({ is_template: currentStatus ? 0 : 1 })
+      .eq('id', id)
+    if (error) {
+      message.error('切换状态失败: ' + error.message)
+    } else {
+      fetchData()
+    }
+  }
+
   const columns = [
+    {
+      title: '',
+      dataIndex: 'is_template',
+      width: 50,
+      render: (isTemplate: number, record: AssessmentItem) => (
+        <Checkbox
+          checked={isTemplate === 1}
+          onChange={() => handleToggleTemplate(record.id, isTemplate)}
+        />
+      ),
+    },
     { title: 'ID', dataIndex: 'id', width: 60 },
     { title: '项目名称', dataIndex: 'item_name' },
     {
       title: '填报字段',
       dataIndex: 'fields',
       render: (fields: any) => {
+        if (!fields) return '-'
         if (typeof fields === 'string') fields = JSON.parse(fields)
         return Object.entries(fields).map(([key, val]) => (
           <Tag key={key} color={(val as string) === '必填' ? 'blue' : 'default'}>
@@ -123,27 +166,36 @@ function AssessmentManage() {
     },
   ]
 
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2>考核项目管理</h2>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingId(null)
-            form.resetFields()
-            setModalVisible(true)
-          }}
-        >
-          新增考核项目
-        </Button>
+        <Space>
+          <Button onClick={handleBatchSetTemplate}>批量设为模板</Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingId(null)
+              form.resetFields()
+              setModalVisible(true)
+            }}
+          >
+            新增考核项目
+          </Button>
+        </Space>
       </div>
       <Table
         columns={columns}
         dataSource={data}
         rowKey="id"
         loading={loading}
+        rowSelection={rowSelection}
       />
       <Modal
         title={editingId ? '编辑考核项目' : '新增考核项目'}
