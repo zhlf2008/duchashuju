@@ -45,7 +45,7 @@ export interface ScheduleDate {
 export interface User {
   id: number
   name: string
-  account: string
+  email: string
   org_id: number
   role: 0 | 1 | 2
   created_at?: string

@@ -6,11 +6,11 @@ import { supabase } from '../services/supabase'
 function Login() {
   const [loading, setLoading] = useState(false)
 
-  const onFinish = async (values: { account: string; password: string }) => {
+  const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true)
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        phone: values.account,
+        email: values.email,
         password: values.password,
       })
       if (error) throw error
@@ -39,12 +39,12 @@ function Login() {
           autoComplete="off"
         >
           <Form.Item
-            name="account"
-            rules={[{ required: true, message: '请输入手机号' }]}
+            name="email"
+            rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '请输入有效邮箱' }]}
           >
             <Input
               prefix={<UserOutlined />}
-              placeholder="手机号"
+              placeholder="邮箱"
               size="large"
             />
           </Form.Item>

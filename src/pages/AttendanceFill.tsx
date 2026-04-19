@@ -36,7 +36,7 @@ function AttendanceFill() {
     const { data: userData } = await supabase
       .from('users')
       .select('*')
-      .eq('account', user.phone)
+      .eq('email', user.email)
       .single()
 
     if (!userData) {
@@ -124,7 +124,7 @@ function AttendanceFill() {
     const { data: userData } = await supabase
       .from('users')
       .select('id, org_id')
-      .eq('account', currentUser.phone)
+      .eq('email', currentUser.email)
       .single()
 
     const resultData: Record<string, number> = {}

@@ -35,7 +35,7 @@ function UserManage() {
     if (data) setOrgs(data)
   }
 
-  const handleAdd = async (values: { name: string; account: string; org_id: number; role: number }) => {
+  const handleAdd = async (values: { name: string; email: string; org_id: number; role: number }) => {
     const { error } = await supabase.from('users').insert([values])
     if (error) {
       message.error('添加失败: ' + error.message)
@@ -47,7 +47,7 @@ function UserManage() {
     }
   }
 
-  const handleEdit = async (values: { name: string; account: string; org_id: number; role: number }) => {
+  const handleEdit = async (values: { name: string; email: string; org_id: number; role: number }) => {
     if (!editingId) return
     const { error } = await supabase.from('users').update(values).eq('id', editingId)
     if (error) {
@@ -80,7 +80,7 @@ function UserManage() {
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
     { title: '姓名', dataIndex: 'name', width: 100 },
-    { title: '账号', dataIndex: 'account', width: 130 },
+    { title: '邮箱', dataIndex: 'email', width: 200 },
     { title: '所属组织', dataIndex: 'org_id', render: (orgId: number) => getOrgName(orgId) },
     {
       title: '角色',
@@ -163,11 +163,11 @@ function UserManage() {
             <Input placeholder="请输入姓名" />
           </Form.Item>
           <Form.Item
-            name="account"
-            label="手机号"
-            rules={[{ required: true, message: '请输入手机号' }]}
+            name="email"
+            label="邮箱"
+            rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '请输入有效邮箱' }]}
           >
-            <Input placeholder="用于登录的手机号" />
+            <Input placeholder="用于登录的邮箱" />
           </Form.Item>
           <Form.Item
             name="org_id"

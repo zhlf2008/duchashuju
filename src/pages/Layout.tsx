@@ -30,9 +30,9 @@ function LayoutPage() {
       if (user) {
         setUser(user)
         const { data } = await supabase
-          .from('user')
+          .from('users')
           .select('role')
-          .eq('account', user.phone)
+          .eq('email', user.email)
           .single()
         if (data) setUserRole(data.role)
       }
@@ -101,7 +101,7 @@ function LayoutPage() {
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
               <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
-              <span>{user?.phone || '用户'}</span>
+              <span>{user?.email || '用户'}</span>
               <span style={{ marginLeft: 8, fontSize: 12, color: '#999' }}>
                 {userRole === 2 ? '管理员' : userRole === 1 ? '填报人' : '成员'}
               </span>
