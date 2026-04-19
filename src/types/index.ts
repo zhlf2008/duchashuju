@@ -12,6 +12,7 @@ export interface Org {
   class_name: string
   group_name: string
   created_at?: string
+  area?: { area_name: string }
 }
 
 export interface Semester {

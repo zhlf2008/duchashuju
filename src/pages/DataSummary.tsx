@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, DatePicker, Select, Row, Col, Statistic, Typography, Button } from 'antd'
+import { Card, Table, Select, Row, Col, Statistic, Typography } from 'antd'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
 import type { Attendance, Org, Semester } from '../types'
 
 const { Title } = Typography
-const { RangePicker } = DatePicker
 
 function DataSummary() {
   const [loading, setLoading] = useState(false)

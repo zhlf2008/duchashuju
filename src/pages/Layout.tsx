@@ -98,7 +98,7 @@ function LayoutPage() {
           alignItems: 'center',
           borderBottom: '1px solid #f0f0f0'
         }}>
-          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+          <Dropdown menu={{ items: userMenuItems, onClick: ({ key }) => key === 'logout' && handleLogout() }} placement="bottomRight">
             <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
               <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
               <span>{user?.email || '用户'}</span>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Select, Row, Col, Typography, Tag, Button } from 'antd'
+import { Card, Table, Select, Row, Col, Typography, Tag } from 'antd'
 import { TrophyOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
@@ -125,15 +125,6 @@ function WeeklyRanking() {
   }
 
   const groupRanking = weekSummary.filter((item) => item.org_level?.group_name)
-  const classRanking = weekSummary.filter((item) => item.org_level?.class_name)
-    .filter((item, index, self) =>
-      index === self.findIndex((t) => t.org_level?.class_name === item.org_level?.class_name)
-    )
-    .map((item) => ({
-      ...item,
-      class_name: item.org_level?.class_name,
-      big_class: item.org_level?.big_class,
-    }))
 
   const groupColumns = [
     {

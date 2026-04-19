@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, DatePicker, Switch, message, Popconfirm, Space, Card, Tag } from 'antd'
+import { Table, Button, Modal, Form, Input, DatePicker, Switch, message, Popconfirm, Space, Tag } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'

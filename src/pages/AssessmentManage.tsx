@@ -77,8 +77,8 @@ function AssessmentManage() {
       render: (fields: any) => {
         if (typeof fields === 'string') fields = JSON.parse(fields)
         return Object.entries(fields).map(([key, val]) => (
-          <Tag key={key} color={val === '必填' ? 'blue' : 'default'}>
-            {key} ({val})
+          <Tag key={key} color={(val as string) === '必填' ? 'blue' : 'default'}>
+            {key} ({val as string})
           </Tag>
         ))
       },

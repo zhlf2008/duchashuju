@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Table, Typography } from 'antd'
+import { Card, Row, Col, Statistic, Typography } from 'antd'
 import {
   TeamOutlined,
   ApartmentOutlined,
   EnvironmentOutlined,
   CalendarOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
 } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 
@@ -19,7 +17,6 @@ function Dashboard() {
     users: 0,
     semesters: 0,
   })
-  const [recentAttendance, setRecentAttendance] = useState<any[]>([])
 
   useEffect(() => {
     fetchStats()

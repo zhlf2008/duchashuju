@@ -23,7 +23,6 @@ function AttendanceFill() {
   const checkTodayAttendance = async () => {
     setLoading(true)
     const today = dayjs().format('YYYY-MM-DD')
-    const weekDay = dayjs().day() + 1
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {

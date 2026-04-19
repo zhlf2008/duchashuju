@@ -11,9 +11,6 @@ function OrgManage() {
   const [modalVisible, setModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form] = Form.useForm()
-  const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null)
-  const [selectedBigClass, setSelectedBigClass] = useState<string | null>(null)
-  const [selectedClassName, setSelectedClassName] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -88,7 +85,6 @@ function OrgManage() {
             onClick={() => {
               setEditingId(record.id)
               form.setFieldsValue(record)
-              setSelectedAreaId(record.area_id)
               setModalVisible(true)
             }}
           >
@@ -152,7 +148,6 @@ function OrgManage() {
           >
             <Select
               placeholder="请选择地区"
-              onChange={(value) => setSelectedAreaId(value)}
             >
               {areas.map((a) => (
                 <Select.Option key={a.id} value={a.id}>
