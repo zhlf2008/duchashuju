@@ -76,9 +76,17 @@ function AttendanceFill() {
       .single()
 
     if (scheduleError) console.error('schedule query error:', scheduleError)
-    console.log('today:', today, 'semester_id:', currentSemester.id, 'todaySchedule:', todaySchedule)
+    console.log('today:', today, '| semester_id:', currentSemester.id, '| todaySchedule:', todaySchedule, '| schedule_date:', todaySchedule?.schedule_date)
 
     if (!todaySchedule) {
+      // 尝试只按日期查询不过滤is_valid，看是否有记录
+      const { data: debugSchedule } = await supabase
+        .from('semester_schedule')
+        .select('*')
+        .eq('semester_id', currentSemester.id)
+        .eq('schedule_date', today)
+        .limit(1)
+      console.log('debugSchedule (no is_valid filter):', debugSchedule)
       message.info('今日无需填报')
       setLoading(false)
       return
