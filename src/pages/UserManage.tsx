@@ -73,7 +73,13 @@ function UserManage() {
   }
 
   const handleAdd = async (values: { name: string; email?: string; phone: string; job_title?: string; org_id: number; role: number }) => {
-    const { error } = await supabase.from('users').insert([values])
+    // 人员必须从 Auth 注册（自动创建 users 记录），此处仅补全信息
+    // 若确需手动添加，占位 email
+    const insertValues = {
+      ...values,
+      email: values.email || `manual_${Date.now()}@placeholder.local`,
+    }
+    const { error } = await supabase.from('users').insert([insertValues])
     if (error) {
       message.error('添加失败: ' + error.message)
     } else {
@@ -86,7 +92,13 @@ function UserManage() {
 
   const handleEdit = async (values: { name: string; email?: string; phone: string; job_title?: string; org_id: number; role: number }) => {
     if (!editingId) return
-    const { error } = await supabase.from('users').update(values).eq('id', editingId)
+    // 如果 email 被清空，保留原值
+    const existing = data.find((u) => u.id === editingId)
+    const updateValues = {
+      ...values,
+      email: values.email || existing?.email || `manual_${Date.now()}@placeholder.local`,
+    }
+    const { error } = await supabase.from('users').update(updateValues).eq('id', editingId)
     if (error) {
       message.error('修改失败: ' + error.message)
     } else {
