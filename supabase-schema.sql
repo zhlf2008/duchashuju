@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS semester (
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   trial_weeks INTEGER DEFAULT 0 CHECK (trial_weeks >= 0),
+  trial_start_date DATE,
   is_current INTEGER DEFAULT 0 CHECK (is_current IN (0, 1)),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

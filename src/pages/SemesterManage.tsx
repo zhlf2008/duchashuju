@@ -320,11 +320,11 @@ function SemesterManage() {
           <Form.Item name="semester_name" label="学期名称" rules={[{ required: true, message: '请输入学期名称' }]}>
             <Input placeholder="如：2026年春季学期" />
           </Form.Item>
-          <Form.Item name="date_range" label="正式学期日期范围" rules={[{ required: true, message: '请选择日期范围' }]}>
-            <RangePicker style={{ width: '100%' }} />
-          </Form.Item>
           <Form.Item name="trial_range" label="试晨读日期范围" tooltip="试晨读在正式学期开始前，非必填">
             <RangePicker style={{ width: '100%' }} placeholder={['试晨读开始', '试晨读结束']} />
+          </Form.Item>
+          <Form.Item name="date_range" label="正式学期日期范围" rules={[{ required: true, message: '请选择日期范围' }]}>
+            <RangePicker style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="is_current" label="设为当前学期" valuePropName="checked">
             <Switch />

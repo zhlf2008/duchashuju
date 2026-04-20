@@ -13,7 +13,8 @@ function AssessmentManage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   // 可视化字段编辑状态
   type FieldType = 'number' | 'text' | 'radio' | 'checkbox' | 'multiSelect' | 'image'
-  const [fieldList, setFieldList] = useState<{ name: string; type: FieldType; required: boolean }[]>([])
+  type FieldItem = { name: string; type: FieldType; required: boolean; options?: string }
+  const [fieldList, setFieldList] = useState<FieldItem[]>([])
   const [hasFormula, setHasFormula] = useState(false)
 
   useEffect(() => {
@@ -28,22 +29,35 @@ function AssessmentManage() {
   }
 
   const handleAddField = () => {
-    setFieldList((prev) => [...prev, { name: '', type: 'number', required: true }])
+    setFieldList((prev) => [...prev, { name: '', type: 'number', required: true, options: '' }])
   }
 
   const handleRemoveField = (index: number) => {
     setFieldList((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleFieldChange = (index: number, key: 'name' | 'type' | 'required', value: string | boolean) => {
+  const handleFieldChange = (index: number, key: keyof FieldItem, value: string | boolean) => {
     setFieldList((prev) => prev.map((f, i) => i === index ? { ...f, [key]: value } : f))
   }
 
   const buildFieldsObj = () => {
+    const typePrefix: Record<FieldType, string> = {
+      number: '数字',
+      text: '文本',
+      radio: '单选',
+      checkbox: '多选',
+      multiSelect: '下拉多选',
+      image: '图片',
+    }
     const obj: Record<string, string> = {}
     fieldList.forEach((f) => {
       if (f.name.trim()) {
-        obj[f.name.trim()] = f.required ? '必填' : '非必填'
+        let val = typePrefix[f.type]
+        if (f.required) val += '+必填'
+        if (['radio', 'checkbox', 'multiSelect'].includes(f.type) && f.options?.trim()) {
+          val += '=' + f.options.trim()
+        }
+        obj[f.name.trim()] = val
       }
     })
     return obj
@@ -192,14 +206,21 @@ function AssessmentManage() {
               }
               const list = Object.entries(fieldsObj).map(([name, val]) => {
                 let type: FieldType = 'text'
-                if ((val as string).includes('数字')) type = 'number'
-                else if ((val as string).includes('单选')) type = 'radio'
-                else if ((val as string).includes('多选')) type = 'checkbox'
-                else if ((val as string).includes('图片')) type = 'image'
+                let options = ''
+                const valStr = val as string
+                if (valStr.includes('数字')) type = 'number'
+                else if (valStr.includes('单选')) type = 'radio'
+                else if (valStr.includes('多选')) type = 'checkbox'
+                else if (valStr.includes('下拉多选')) type = 'multiSelect'
+                else if (valStr.includes('图片')) type = 'image'
+                // 解析选项: 形如 "单选+必填=男,女" 或 "多选+必填=优秀,良好"
+                const eqIdx = valStr.indexOf('=')
+                if (eqIdx !== -1) options = valStr.substring(eqIdx + 1)
                 return {
                   name,
                   type,
-                  required: (val as string).includes('必填'),
+                  required: valStr.includes('必填'),
+                  options,
                 }
               })
               setFieldList(list)
@@ -297,36 +318,49 @@ function AssessmentManage() {
                 <Typography.Text type="secondary">暂无字段，请点击「添加字段」</Typography.Text>
               )}
               {fieldList.map((field, index) => (
-                <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <Input
-                    placeholder="字段名"
-                    value={field.name}
-                    onChange={(e) => handleFieldChange(index, 'name', e.target.value)}
-                    style={{ flex: 2 }}
-                  />
-                  <Select
-                    value={field.type}
-                    onChange={(val) => handleFieldChange(index, 'type', val)}
-                    style={{ flex: 1 }}
-                  >
-                    <Select.Option value="number">数字</Select.Option>
-                    <Select.Option value="text">文本</Select.Option>
-                    <Select.Option value="radio">单选</Select.Option>
-                    <Select.Option value="checkbox">多选</Select.Option>
-                    <Select.Option value="multiSelect">下拉多选</Select.Option>
-                    <Select.Option value="image">图片上传</Select.Option>
-                  </Select>
-                  <Checkbox
-                    checked={field.required}
-                    onChange={(e) => handleFieldChange(index, 'required', e.target.checked)}
-                  >必填</Checkbox>
-                  <Button
-                    type="link"
-                    danger
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleRemoveField(index)}
-                  />
+                <div key={index}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center' }}>
+                    <Input
+                      placeholder="字段名"
+                      value={field.name}
+                      onChange={(e) => handleFieldChange(index, 'name', e.target.value)}
+                      style={{ flex: 2 }}
+                    />
+                    <Select
+                      value={field.type}
+                      onChange={(val) => handleFieldChange(index, 'type', val)}
+                      style={{ flex: 1 }}
+                    >
+                      <Select.Option value="number">数字</Select.Option>
+                      <Select.Option value="text">文本</Select.Option>
+                      <Select.Option value="radio">单选</Select.Option>
+                      <Select.Option value="checkbox">多选</Select.Option>
+                      <Select.Option value="multiSelect">下拉多选</Select.Option>
+                      <Select.Option value="image">图片上传</Select.Option>
+                    </Select>
+                    <Checkbox
+                      checked={field.required}
+                      onChange={(e) => handleFieldChange(index, 'required', e.target.checked)}
+                    >必填</Checkbox>
+                    <Button
+                      type="link"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleRemoveField(index)}
+                    />
+                  </div>
+                  {['radio', 'checkbox', 'multiSelect'].includes(field.type) && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', paddingLeft: 4 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>选项:</Typography.Text>
+                      <Input
+                        placeholder="用逗号分隔，如：优秀,良好,及格"
+                        value={field.options || ''}
+                        onChange={(e) => handleFieldChange(index, 'options', e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </Card>
