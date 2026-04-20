@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, Form, Input, Button, message, Alert, Typography, Divider, Row, Col } from 'antd'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
-import type { Semester, ScheduleDate, AssessmentItem } from '../types'
+import type { Semester, ScheduleDate, AssessmentItem, Org } from '../types'
 
 const { Title, Text } = Typography
 
@@ -15,6 +15,10 @@ function AttendanceFill() {
   const [assessmentItems, setAssessmentItems] = useState<AssessmentItem[]>([])
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [form] = Form.useForm()
+  // 实时计算结果 { [itemId]: number }
+  const [computedResults, setComputedResults] = useState<Record<number, number>>({})
+  // 当前用户所属组织信息
+  const [userOrg, setUserOrg] = useState<Org | null>(null)
 
   useEffect(() => {
     checkTodayAttendance()
@@ -32,9 +36,9 @@ function AttendanceFill() {
     }
     setCurrentUser(user)
 
-    // 并行查询：用户信息 + 当前学期
+    // 并行查询：用户信息（含org）+ 当前学期
     const [{ data: userData }, { data: currentSemester }] = await Promise.all([
-      supabase.from('users').select('*').eq('email', user.email).maybeSingle(),
+      supabase.from('users').select('*, org:org_id(*)').eq('email', user.email).maybeSingle(),
       supabase.from('semester').select('*').eq('is_current', 1).single(),
     ])
 
@@ -43,6 +47,7 @@ function AttendanceFill() {
       setLoading(false)
       return
     }
+    if (userData.org) setUserOrg(userData.org)
 
     if (!currentSemester) {
       message.warning('当前没有设置学期，请联系管理员')
@@ -221,6 +226,13 @@ function AttendanceFill() {
               <Text type="secondary">星期：{['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dayjs().day()]}</Text>
             </Col>
           </Row>
+          {userOrg && (
+            <Row gutter={16} style={{ marginTop: 8 }}>
+              <Col>
+                <Text type="secondary">组织：{userOrg.area?.area_name || ''} → {userOrg.big_class} → {userOrg.class_name} → {userOrg.group_name}</Text>
+              </Col>
+            </Row>
+          )}
           {hasSubmitted && (
             <Alert message="今日已填报，提交后将覆盖原数据" type="warning" showIcon style={{ marginTop: 16 }} />
           )}
@@ -231,6 +243,14 @@ function AttendanceFill() {
         <Form
           form={form}
           onFinish={onFinish}
+          onValuesChange={(_all, values) => {
+            // 实时计算每个考核项目的结果
+            const newResults: Record<number, number> = {}
+            assessmentItems.forEach((item) => {
+              newResults[item.id] = calculateResult(item, values, String(item.id))
+            })
+            setComputedResults(newResults)
+          }}
           layout="vertical"
         >
           {assessmentItems.map((item) => {
@@ -240,8 +260,22 @@ function AttendanceFill() {
               const valStr = String(val || '')
               return valStr.includes('+必填') && !valStr.includes('非必填')
             }
+            const result = computedResults[item.id]
             return (
-              <Card key={item.id} title={item.item_name} style={{ marginBottom: 16 }}>
+              <Card
+                key={item.id}
+                title={
+                  <span>
+                    {item.item_name}
+                    {result !== undefined && (
+                      <Text style={{ marginLeft: 12, color: result > 100 ? '#ff4d4f' : '#52c41a', fontWeight: 'bold' }}>
+                        → {result}%
+                      </Text>
+                    )}
+                  </span>
+                }
+                style={{ marginBottom: 16 }}
+              >
                 <Row gutter={16}>
                   {Object.entries(fields).map(([fieldName, val]) => (
                     <Col span={12} key={fieldName}>
@@ -255,7 +289,7 @@ function AttendanceFill() {
                     </Col>
                   ))}
                 </Row>
-                <Text type="secondary">公式：{item.formula}</Text>
+                {item.formula && <Text type="secondary">公式：{item.formula}</Text>}
               </Card>
             )
           })}

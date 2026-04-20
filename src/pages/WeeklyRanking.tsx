@@ -45,7 +45,11 @@ function WeeklyRanking() {
   const [loading, setLoading] = useState(false)
   const [semesters, setSemesters] = useState<Semester[]>([])
   const [selectedSemester, setSelectedSemester] = useState<number | null>(null)
-  const [weekSummary, setWeekSummary] = useState<any[]>([])
+  const [weekSummary, setWeekSummary] = useState<{
+    groups: any[]
+    classes: any[]
+    bigClasses: any[]
+  }>({ groups: [], classes: [], bigClasses: [] })
   // 存储"学期周次"（从1开始）
   const [selectedSemesterWeek, setSelectedSemesterWeek] = useState<number>(1)
 
@@ -85,7 +89,7 @@ function WeeklyRanking() {
   const fetchWeekSummary = async () => {
     if (!currentSemester) return
     setLoading(true)
-    setWeekSummary([])
+    setWeekSummary({ groups: [], classes: [], bigClasses: [] })
 
     const semesterStart = dayjs(currentSemester.start_date)
     const { start: weekStart, end: weekEnd } = getSemesterWeekRange(semesterStart, selectedSemesterWeek)
@@ -94,8 +98,8 @@ function WeeklyRanking() {
       .from('attendance')
       .select('*, org:org_id(*, area:area_id(area_name))')
       .eq('semester_id', selectedSemester)
-      .gte('attendance_date', weekStart.format('YYYY-MM-DD'))
-      .lte('attendance_date', weekEnd.format('YYYY-MM-DD'))
+      .gte('schedule_date', weekStart.format('YYYY-MM-DD'))
+      .lte('schedule_date', weekEnd.format('YYYY-MM-DD'))
 
     if (!attendanceData || attendanceData.length === 0) {
       message.info('本周暂无考勤数据')
@@ -103,40 +107,76 @@ function WeeklyRanking() {
       return
     }
 
-    const orgRates: Record<number, { total: number; count: number; org: any }> = {}
+    // ============ 1. 班级内小组排名 ============
+    // group by org_id (each group), then average within same class for class-level grouping
+    const groupMap = new Map<number, { total: number; count: number; org: any }>()
+    // class-level: key = (big_class, class_name), value = array of group rates
+    const classMap = new Map<string, { total: number; count: number; big_class: string; class_name: string }>()
+    // big-class-level: key = (area, big_class), value = array of class rates
+    const bigClassMap = new Map<string, { total: number; count: number; area: string; big_class: string }>()
 
     attendanceData.forEach((item: any) => {
-      if (!orgRates[item.org_id]) {
-        orgRates[item.org_id] = { total: 0, count: 0, org: item.org }
+      if (!groupMap.has(item.org_id)) {
+        groupMap.set(item.org_id, { total: 0, count: 0, org: item.org })
       }
-      orgRates[item.org_id].total += item.daily_rate || 0
-      orgRates[item.org_id].count += 1
+      groupMap.get(item.org_id)!.total += item.daily_rate || 0
+      groupMap.get(item.org_id)!.count += 1
+
+      const org = item.org
+      if (!org) return
+      const classKey = `${org.big_class}||${org.class_name}`
+      if (!classMap.has(classKey)) {
+        classMap.set(classKey, { total: 0, count: 0, big_class: org.big_class, class_name: org.class_name })
+      }
+      classMap.get(classKey)!.total += item.daily_rate || 0
+      classMap.get(classKey)!.count += 1
+
+      const bigClassKey = `${org.area?.area_name || ''}||${org.big_class}`
+      if (!bigClassMap.has(bigClassKey)) {
+        bigClassMap.set(bigClassKey, { total: 0, count: 0, area: org.area?.area_name || '', big_class: org.big_class })
+      }
+      bigClassMap.get(bigClassKey)!.total += item.daily_rate || 0
+      bigClassMap.get(bigClassKey)!.count += 1
     })
 
-    const calculated = Object.entries(orgRates).map(([orgId, data]) => {
+    // 小组排名
+    const groupRanking = Array.from(groupMap.entries()).map(([orgId, data]) => {
       const avgRate = data.count > 0 ? Math.round((data.total / data.count) * 100) / 100 : 0
       return {
-        org_id: parseInt(orgId),
-        org_name: data.org ? `${data.org.area?.area_name || ''} → ${data.org.big_class || ''} → ${data.org.class_name || ''} → ${data.org.group_name || ''}` : '-',
+        org_id: orgId,
+        org_name: `${data.org?.class_name || ''} → ${data.org?.group_name || ''}`,
         week_rate: avgRate,
-        rank_group: 0,
-        org_level: data.org ? {
-          area: data.org.area?.area_name,
-          big_class: data.org.big_class,
-          class_name: data.org.class_name,
-          group_name: data.org.group_name,
-        } : null,
+        rank: 0,
       }
     })
+    groupRanking.sort((a, b) => b.week_rate - a.week_rate)
+    const rankedGroups = groupRanking.map((item, index) => ({ ...item, rank: index + 1 }))
 
-    calculated.sort((a, b) => b.week_rate - a.week_rate)
+    // 班级排名（同一大班内的各班级）
+    const classRanking = Array.from(classMap.entries()).map(([_classKey, data]) => {
+      const avgRate = data.count > 0 ? Math.round((data.total / data.count) * 100) / 100 : 0
+      return {
+        org_name: `${data.big_class} → ${data.class_name}`,
+        week_rate: avgRate,
+        rank: 0,
+      }
+    })
+    classRanking.sort((a, b) => b.week_rate - a.week_rate)
+    const rankedClasses = classRanking.map((item, index) => ({ ...item, rank: index + 1 }))
 
-    const ranked = calculated.map((item, index) => ({
-      ...item,
-      rank_group: index + 1,
-    }))
+    // 大班排名（同一地区内的各大班）
+    const bigClassRanking = Array.from(bigClassMap.entries()).map(([_bigClassKey, data]) => {
+      const avgRate = data.count > 0 ? Math.round((data.total / data.count) * 100) / 100 : 0
+      return {
+        org_name: `${data.area} → ${data.big_class}`,
+        week_rate: avgRate,
+        rank: 0,
+      }
+    })
+    bigClassRanking.sort((a, b) => b.week_rate - a.week_rate)
+    const rankedBigClasses = bigClassRanking.map((item, index) => ({ ...item, rank: index + 1 }))
 
-    setWeekSummary(ranked)
+    setWeekSummary({ groups: rankedGroups, classes: rankedClasses, bigClasses: rankedBigClasses })
     setLoading(false)
   }
 
@@ -147,7 +187,26 @@ function WeeklyRanking() {
     return {}
   }
 
-  const groupRanking = weekSummary.filter((item) => item.org_level?.group_name)
+  const makeColumns = (title: string) => [
+    {
+      title: '排名',
+      dataIndex: 'rank',
+      key: 'rank',
+      width: 80,
+      render: (rank: number) => (
+        <Tag style={{ ...getRankStyle(rank), fontWeight: 'bold' }}>
+          {rank <= 3 ? <TrophyOutlined /> : ''} {rank}
+        </Tag>
+      ),
+    },
+    { title: title, dataIndex: 'org_name', key: 'org_name', ellipsis: true },
+    {
+      title: '出勤率',
+      dataIndex: 'week_rate',
+      key: 'week_rate',
+      render: (rate: number) => <Text strong>{rate}%</Text>,
+    },
+  ]
 
   // 根据学期日期范围生成周次选项（包含试晨读周）
   const semesterWeekOptions = useMemo(() => {
@@ -160,30 +219,11 @@ function WeeklyRanking() {
     return Array.from({ length: totalWeeks }, (_, i) => i + 1)
   }, [currentSemester])
 
-  const groupColumns = [
-    {
-      title: '排名',
-      dataIndex: 'rank_group',
-      key: 'rank_group',
-      width: 80,
-      render: (rank: number) => (
-        <Tag style={{ ...getRankStyle(rank), fontWeight: 'bold' }}>
-          {rank <= 3 ? <TrophyOutlined /> : ''} {rank}
-        </Tag>
-      ),
-    },
-    { title: '小组', dataIndex: 'org_name', key: 'org_name' },
-    {
-      title: '周出勤率',
-      dataIndex: 'week_rate',
-      key: 'week_rate',
-      render: (rate: number) => <Text strong>{rate}%</Text>,
-    },
-  ]
+  const hasData = weekSummary.groups.length > 0 || weekSummary.classes.length > 0 || weekSummary.bigClasses.length > 0
 
   return (
     <div>
-      <Title level={3}>周排名光荣榜</Title>
+      <Title level={3}>班级榜单</Title>
 
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={16}>
@@ -194,7 +234,6 @@ function WeeklyRanking() {
               value={selectedSemester}
               onChange={(val) => {
                 setSelectedSemester(val)
-                // 切换学期时重置到当前周
                 const sem = semesters.find((s) => s.id === val)
                 if (sem) {
                   const semStart = dayjs(sem.start_date)
@@ -233,23 +272,45 @@ function WeeklyRanking() {
         </Row>
       </Card>
 
-      <Row gutter={16}>
-        <Col span={24}>
-          <Card title="🏆 小组周排名 TOP 10" style={{ marginBottom: 16 }}>
-            <Table
-              columns={groupColumns}
-              dataSource={groupRanking.slice(0, 10)}
-              rowKey="org_id"
-              loading={loading}
-              pagination={false}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {weekSummary.length === 0 && !loading && (
+      {!loading && !hasData && (
         <Card>
           <Text type="secondary">暂无本周排名数据，请确认是否在学期内且已有考勤填报记录。</Text>
+        </Card>
+      )}
+
+      {!loading && weekSummary.classes.length > 0 && (
+        <Card title="本大班各班级排名" style={{ marginBottom: 16 }}>
+          <Table
+            columns={makeColumns('班级')}
+            dataSource={weekSummary.classes.slice(0, 10)}
+            rowKey={(_, index) => `class-${index}`}
+            loading={loading}
+            pagination={false}
+          />
+        </Card>
+      )}
+
+      {!loading && weekSummary.bigClasses.length > 0 && (
+        <Card title="本地区各大班排名" style={{ marginBottom: 16 }}>
+          <Table
+            columns={makeColumns('大班')}
+            dataSource={weekSummary.bigClasses.slice(0, 10)}
+            rowKey={(_, index) => `bigclass-${index}`}
+            loading={loading}
+            pagination={false}
+          />
+        </Card>
+      )}
+
+      {!loading && weekSummary.groups.length > 0 && (
+        <Card title="本班各小组排名" style={{ marginBottom: 16 }}>
+          <Table
+            columns={makeColumns('小组')}
+            dataSource={weekSummary.groups.slice(0, 10)}
+            rowKey="org_id"
+            loading={loading}
+            pagination={false}
+          />
         </Card>
       )}
     </div>

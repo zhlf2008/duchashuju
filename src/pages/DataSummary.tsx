@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Card, Table, Select, Row, Col, Statistic, Typography } from 'antd'
+import { useEffect, useState, useMemo } from 'react'
+import { Card, Table, Select, Row, Col, Statistic, Typography, Popconfirm, message, Cascader } from 'antd'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
 import type { Attendance, Org, Semester } from '../types'
@@ -11,7 +11,8 @@ function DataSummary() {
   const [semesters, setSemesters] = useState<Semester[]>([])
   const [selectedSemester, setSelectedSemester] = useState<number | null>(null)
   const [orgs, setOrgs] = useState<Org[]>([])
-  const [selectedOrg, setSelectedOrg] = useState<number | null>(null)
+  // 级联选择状态 [areaId, bigClass, className] 或 null
+  const [orgPath, setOrgPath] = useState<string[] | null>(null)
   const [data, setData] = useState<any[]>([])
   const [stats, setStats] = useState({ total: 0, avgRate: 0, count: 0 })
 
@@ -24,7 +25,7 @@ function DataSummary() {
     if (selectedSemester) {
       fetchData()
     }
-  }, [selectedSemester, selectedOrg])
+  }, [selectedSemester, orgPath])
 
   const fetchSemesters = async () => {
     const { data } = await supabase.from('semester').select('*').order('id', { ascending: false })
@@ -50,8 +51,12 @@ function DataSummary() {
       .select('*, org:org_id(*, area:area_id(area_name)), schedule:schedule_id(schedule_date), user:fill_user_id(name)')
       .eq('semester_id', selectedSemester)
 
-    if (selectedOrg) {
-      query = query.eq('org_id', selectedOrg)
+    // 按级联选择过滤
+    if (orgPath && orgPath.length > 0) {
+      const [areaId, bigClass, className] = orgPath
+      if (areaId) query = query.eq('org.area_id', areaId)
+      if (bigClass) query = query.eq('org.big_class', bigClass as string)
+      if (className) query = query.eq('org.class_name', className as string)
     }
 
     const { data: attendanceData } = await query.order('created_at', { ascending: false })
@@ -80,37 +85,86 @@ function DataSummary() {
       title: '组织',
       dataIndex: 'org',
       key: 'org',
-      render: (org: Org) => getOrgName(org),
-      width: 300,
+      render: (org: Org) => (
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={getOrgName(org)}>
+          {getOrgName(org)}
+        </span>
+      ),
+      width: 280,
     },
     {
       title: '日期',
       dataIndex: 'schedule_date',
       key: 'schedule_date',
-      width: 120,
+      width: 110,
       render: (_: any, record: any) => record.schedule?.schedule_date || '-',
     },
     {
       title: '出勤率',
       dataIndex: 'daily_rate',
       key: 'daily_rate',
-      width: 100,
+      width: 90,
       render: (rate: number) => `${rate}%`,
     },
     {
       title: '填报人',
       dataIndex: 'fill_user_id',
       key: 'fill_user_id',
-      width: 100,
+      width: 90,
       render: (_: any, record: any) => record.user?.name || '-',
     },
     {
       title: '填报时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      width: 150,
       render: (time: string) => time ? dayjs(time).format('YYYY-MM-DD HH:mm') : '-',
     },
+    {
+      title: '操作',
+      key: 'action',
+      width: 80,
+      render: (_: any, record: any) => (
+        <Popconfirm
+          title="确定删除该条填报记录？"
+          onConfirm={async () => {
+            const { error } = await supabase.from('attendance').delete().eq('id', record.id)
+            if (error) {
+              message.error('删除失败')
+            } else {
+              message.success('已删除')
+              fetchData()
+            }
+          }}
+        >
+          <a style={{ color: '#ff4d4f' }}>删除</a>
+        </Popconfirm>
+      ),
+    },
   ]
+
+  // 构建级联选择数据：area → big_class → class_name
+  const cascaderOptions = useMemo(() => {
+    interface ClassNode { label: string; value: string; children: { label: string; value: string }[] }
+    interface AreaNode { label: string; value: string; children: ClassNode[] }
+    const areaMap = new Map<string, AreaNode>()
+    orgs.forEach((o) => {
+      const areaName = o.area?.area_name || '未知'
+      const areaId = String(o.area_id)
+      if (!areaMap.has(areaName)) {
+        areaMap.set(areaName, { label: areaName, value: areaId, children: [] })
+      }
+      const areaNode = areaMap.get(areaName)!
+      if (!areaNode.children.find((c) => c.value === o.big_class)) {
+        areaNode.children.push({ label: o.big_class, value: o.big_class, children: [] })
+      }
+      const bigClassNode = areaNode.children.find((c) => c.value === o.big_class)!
+      if (!bigClassNode.children.find((c) => c.value === o.class_name)) {
+        bigClassNode.children.push({ label: o.class_name, value: o.class_name })
+      }
+    })
+    return Array.from(areaMap.values())
+  }, [orgs])
 
   return (
     <div>
@@ -150,19 +204,15 @@ function DataSummary() {
             </Select>
           </Col>
           <Col span={12}>
-            <Select
-              placeholder="选择组织（可选）"
+            <Cascader
               style={{ width: '100%' }}
+              placeholder="选择组织（可选）"
+              value={orgPath as any}
+              onChange={(val: any) => setOrgPath(Array.isArray(val?.[0]) ? val[0] : val?.[0] ? [val[0]] : null)}
+              options={cascaderOptions}
+              changeOnSelect
               allowClear
-              value={selectedOrg}
-              onChange={setSelectedOrg}
-            >
-              {orgs.map((o) => (
-                <Select.Option key={o.id} value={o.id}>
-                  {o.area?.area_name} → {o.big_class} → {o.class_name} → {o.group_name}
-                </Select.Option>
-              ))}
-            </Select>
+            />
           </Col>
         </Row>
       </Card>
@@ -172,7 +222,7 @@ function DataSummary() {
         dataSource={data}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 800 }}
+        scroll={{ x: 900 }}
       />
     </div>
   )
