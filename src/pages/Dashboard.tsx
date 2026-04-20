@@ -13,7 +13,9 @@ const { Title } = Typography
 function Dashboard() {
   const [stats, setStats] = useState({
     areas: 0,
-    orgs: 0,
+    bigClasses: 0,
+    classes: 0,
+    groups: 0,
     users: 0,
     semesters: 0,
   })
@@ -23,15 +25,21 @@ function Dashboard() {
   }, [])
 
   const fetchStats = async () => {
-    const [areas, orgs, users, semesters] = await Promise.all([
+    const [areas, users, semesters, orgData] = await Promise.all([
       supabase.from('area').select('id', { count: 'exact' }),
-      supabase.from('org').select('id', { count: 'exact' }),
       supabase.from('user').select('id', { count: 'exact' }),
       supabase.from('semester').select('id', { count: 'exact' }),
+      supabase.from('org').select('big_class, class_name, group_name'),
     ])
+    const allOrgs = orgData.data || []
+    const bigClasses = new Set(allOrgs.map((o) => o.big_class).filter(Boolean)).size
+    const classes = new Set(allOrgs.map((o) => o.class_name).filter(Boolean)).size
+    const groups = new Set(allOrgs.map((o) => o.group_name).filter(Boolean)).size
     setStats({
       areas: areas.count || 0,
-      orgs: orgs.count || 0,
+      bigClasses,
+      classes,
+      groups,
       users: users.count || 0,
       semesters: semesters.count || 0,
     })
@@ -53,8 +61,26 @@ function Dashboard() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="组织数量"
-              value={stats.orgs}
+              title="大班数量"
+              value={stats.bigClasses}
+              prefix={<ApartmentOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="班级数量"
+              value={stats.classes}
+              prefix={<ApartmentOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="小组数量"
+              value={stats.groups}
               prefix={<ApartmentOutlined />}
             />
           </Card>

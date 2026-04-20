@@ -18,8 +18,6 @@ function SemesterManage() {
   const [schedules, setSchedules] = useState<ScheduleDate[]>([])
   const [assessmentItems, setAssessmentItems] = useState<AssessmentItem[]>([])
   const [form] = Form.useForm()
-  const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null)
-  const [scheduleForm] = Form.useForm()
 
   useEffect(() => {
     fetchData()
@@ -175,13 +173,36 @@ function SemesterManage() {
     setScheduleModalVisible(true)
   }
 
-  const getItemNames = (itemIds: string) => {
-    if (!itemIds) return '-'
-    const ids = itemIds.split(',').filter(Boolean)
-    return ids.map((id) => {
-      const item = assessmentItems.find((i) => i.id === parseInt(id))
-      return item ? item.item_name : null
-    }).filter(Boolean).join(', ') || '-'
+
+
+  // Inline: 切换日程考核项目勾选
+  const handleToggleScheduleItems = async (record: ScheduleDate, checkedIds: number[]) => {
+    const { error } = await supabase
+      .from('semester_schedule')
+      .update({ item_ids: checkedIds.join(',') })
+      .eq('id', record.id)
+    if (error) {
+      message.error('保存失败')
+    } else {
+      setSchedules((prev) =>
+        prev.map((s) => s.id === record.id ? { ...s, item_ids: checkedIds.join(',') } : s)
+      )
+    }
+  }
+
+  // Inline: 切换日程状态
+  const handleToggleScheduleValid = async (record: ScheduleDate, isValid: boolean) => {
+    const { error } = await supabase
+      .from('semester_schedule')
+      .update({ is_valid: isValid ? 1 : 0 })
+      .eq('id', record.id)
+    if (error) {
+      message.error('保存失败')
+    } else {
+      setSchedules((prev) =>
+        prev.map((s) => s.id === record.id ? { ...s, is_valid: isValid ? 1 : 0 } : s)
+      )
+    }
   }
 
   const weekDayNames = ['', '周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -189,7 +210,7 @@ function SemesterManage() {
   const scheduleColumns = [
     {
       title: '类型',
-      width: 90,
+      width: 80,
       render: (_: any, record: ScheduleDate) => {
         if (!currentSemester) return '-'
         const trialWeeks = currentSemester.trial_weeks || 0
@@ -212,55 +233,36 @@ function SemesterManage() {
     },
     {
       title: '考核项目',
-      dataIndex: 'item_ids',
-      render: (itemIds: string) => {
-        const names = getItemNames(itemIds)
-        if (names === '-' || names === '') return <Text type="secondary">未设置</Text>
-        return <Text>{names}</Text>
-      }
+      width: 300,
+      render: (_: any, record: ScheduleDate) => {
+        const checked = record.item_ids ? record.item_ids.split(',').filter(Boolean).map(Number) : []
+        return (
+          <Checkbox.Group
+            value={checked}
+            onChange={(vals) => handleToggleScheduleItems(record, vals as number[])}
+          >
+            {assessmentItems.map((item) => (
+              <Checkbox key={item.id} value={item.id}>{item.item_name}</Checkbox>
+            ))}
+          </Checkbox.Group>
+        )
+      },
     },
     {
       title: '状态',
       dataIndex: 'is_valid',
       width: 80,
-      render: (valid: number) => valid ? <Tag color="green">有效</Tag> : <Tag>无效</Tag>
-    },
-    {
-      title: '操作',
-      width: 100,
-      render: (_: any, record: ScheduleDate) => (
-        <Button
-          type="link"
+      render: (valid: number, record: ScheduleDate) => (
+        <Switch
           size="small"
-          onClick={() => {
-            setEditingScheduleId(record.id)
-            const currentIds = record.item_ids ? record.item_ids.split(',').filter(Boolean).map(Number) : []
-            scheduleForm.setFieldsValue({ item_ids: currentIds, is_valid: record.is_valid === 1 })
-            setScheduleModalVisible(true)
-          }}
-        >
-          编辑项目
-        </Button>
+          checked={valid === 1}
+          onChange={(checked) => handleToggleScheduleValid(record, checked)}
+          checkedChildren="有效"
+          unCheckedChildren="无效"
+        />
       ),
     },
   ]
-
-  const handleUpdateSchedule = async (values: { item_ids: number[]; is_valid: boolean }) => {
-    if (!editingScheduleId) return
-    const { error } = await supabase.from('semester_schedule').update({
-      item_ids: values.item_ids.join(','),
-      is_valid: values.is_valid ? 1 : 0,
-    }).eq('id', editingScheduleId)
-
-    if (error) {
-      message.error('更新失败: ' + error.message)
-    } else {
-      message.success('更新成功')
-      setEditingScheduleId(null)
-      scheduleForm.resetFields()
-      if (currentSemester) await fetchSchedules(currentSemester.id)
-    }
-  }
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
@@ -329,45 +331,23 @@ function SemesterManage() {
       </Modal>
 
       <Modal
-        title={editingScheduleId ? '编辑日程考核项目' : `${currentSemester?.semester_name} - 日程管理`}
+        title={`${currentSemester?.semester_name} - 日程管理`}
         open={scheduleModalVisible}
-        onCancel={() => { setScheduleModalVisible(false); setEditingScheduleId(null); setCurrentSemester(null); scheduleForm.resetFields() }}
+        onCancel={() => { setScheduleModalVisible(false); setCurrentSemester(null) }}
         width={900}
-        footer={editingScheduleId ? [
-          <Button key="back" onClick={() => { setEditingScheduleId(null); scheduleForm.resetFields() }}>返回列表</Button>,
-          <Button key="submit" type="primary" onClick={() => scheduleForm.submit()}>保存</Button>
-        ] : null}
+        footer={null}
       >
-        {editingScheduleId ? (
-          <Form form={scheduleForm} layout="vertical" onFinish={handleUpdateSchedule}>
-            <Form.Item name="item_ids" label="考核项目" rules={[{ required: true, message: '请选择考核项目' }]}>
-              <Checkbox.Group>
-                <Space direction="vertical">
-                  {assessmentItems.map((item) => (
-                    <Checkbox key={item.id} value={item.id}>{item.item_name}</Checkbox>
-                  ))}
-                </Space>
-              </Checkbox.Group>
-            </Form.Item>
-            <Form.Item name="is_valid" label="状态" valuePropName="checked">
-              <Switch checkedChildren="有效" unCheckedChildren="无效" />
-            </Form.Item>
-          </Form>
-        ) : (
-          <>
-            <Card size="small" style={{ marginBottom: 16 }}>
-              <Text type="secondary">点击「编辑项目」可为单日设置考核项目。默认使用模板项目。</Text>
-            </Card>
-            <Table
-              columns={scheduleColumns}
-              dataSource={schedules}
-              rowKey="id"
-              size="small"
-              pagination={{ pageSize: 31 }}
-              scroll={{ y: 400 }}
-            />
-          </>
-        )}
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Text type="secondary">直接在列表中勾选考核项目，保存后即时生效。</Text>
+        </Card>
+        <Table
+          columns={scheduleColumns}
+          dataSource={schedules}
+          rowKey="id"
+          size="small"
+          pagination={{ pageSize: 31 }}
+          scroll={{ y: 400 }}
+        />
       </Modal>
     </div>
   )

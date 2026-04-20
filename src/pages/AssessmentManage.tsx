@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Switch, message, Popconfirm, Space, Tag, Checkbox } from 'antd'
+import { Table, Button, Modal, Form, Input, Switch, message, Popconfirm, Space, Tag, Checkbox, Select, Card, Typography } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { AssessmentItem } from '../types'
@@ -11,6 +11,8 @@ function AssessmentManage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form] = Form.useForm()
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  // 可视化字段编辑状态
+  const [fieldList, setFieldList] = useState<{ name: string; type: 'number' | 'text'; required: boolean }[]>([])
 
   useEffect(() => {
     fetchData()
@@ -23,10 +25,33 @@ function AssessmentManage() {
     setLoading(false)
   }
 
-  const handleAdd = async (values: { item_name: string; fields: any; formula: string; is_template: boolean }) => {
+  const handleAddField = () => {
+    setFieldList((prev) => [...prev, { name: '', type: 'number', required: true }])
+  }
+
+  const handleRemoveField = (index: number) => {
+    setFieldList((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleFieldChange = (index: number, key: 'name' | 'type' | 'required', value: string | boolean) => {
+    setFieldList((prev) => prev.map((f, i) => i === index ? { ...f, [key]: value } : f))
+  }
+
+  const buildFieldsObj = () => {
+    const obj: Record<string, string> = {}
+    fieldList.forEach((f) => {
+      if (f.name.trim()) {
+        obj[f.name.trim()] = f.required ? '必填' : '非必填'
+      }
+    })
+    return obj
+  }
+
+  const handleAdd = async (values: { item_name: string; formula: string; is_template: boolean }) => {
+    const fields = buildFieldsObj()
     const { error } = await supabase.from('assessment_item').insert([{
       item_name: values.item_name,
-      fields: typeof values.fields === 'string' ? JSON.parse(values.fields) : values.fields,
+      fields,
       formula: values.formula,
       is_template: values.is_template ? 1 : 0,
     }])
@@ -35,16 +60,19 @@ function AssessmentManage() {
     } else {
       message.success('添加成功')
       setModalVisible(false)
+      setEditingId(null)
+      setFieldList([])
       form.resetFields()
       fetchData()
     }
   }
 
-  const handleEdit = async (values: { item_name: string; fields: any; formula: string; is_template: boolean }) => {
+  const handleEdit = async (values: { item_name: string; formula: string; is_template: boolean }) => {
     if (!editingId) return
+    const fields = buildFieldsObj()
     const { error } = await supabase.from('assessment_item').update({
       item_name: values.item_name,
-      fields: typeof values.fields === 'string' ? JSON.parse(values.fields) : values.fields,
+      fields,
       formula: values.formula,
       is_template: values.is_template ? 1 : 0,
     }).eq('id', editingId)
@@ -54,6 +82,7 @@ function AssessmentManage() {
       message.success('修改成功')
       setModalVisible(false)
       setEditingId(null)
+      setFieldList([])
       form.resetFields()
       fetchData()
     }
@@ -143,9 +172,19 @@ function AssessmentManage() {
             icon={<EditOutlined />}
             onClick={() => {
               setEditingId(record.id)
+              let fieldsObj: Record<string, string> = {}
+              if (record.fields) {
+                fieldsObj = typeof record.fields === 'string' ? JSON.parse(record.fields) : record.fields
+              }
+              const list = Object.entries(fieldsObj).map(([name, val]) => ({
+                name,
+                type: (val as string).includes('数字') ? 'number' as const : 'text' as const,
+                required: (val as string).includes('必填'),
+              }))
+              setFieldList(list)
               form.setFieldsValue({
-                ...record,
-                fields: typeof record.fields === 'string' ? record.fields : JSON.stringify(record.fields),
+                item_name: record.item_name,
+                formula: record.formula,
                 is_template: record.is_template === 1,
               })
               setModalVisible(true)
@@ -182,6 +221,7 @@ function AssessmentManage() {
             icon={<PlusOutlined />}
             onClick={() => {
               setEditingId(null)
+              setFieldList([])
               form.resetFields()
               setModalVisible(true)
             }}
@@ -204,6 +244,7 @@ function AssessmentManage() {
         onCancel={() => {
           setModalVisible(false)
           setEditingId(null)
+          setFieldList([])
           form.resetFields()
         }}
         onOk={() => form.submit()}
@@ -221,12 +262,51 @@ function AssessmentManage() {
             <Input placeholder="如：上线率、作业率" />
           </Form.Item>
           <Form.Item
-            name="fields"
-            label="填报字段 (JSON格式)"
-            rules={[{ required: true, message: '请输入填报字段' }]}
-            extra='格式示例: {"应到人数": "必填", "实到人数": "必填"}'
+            name="item_name"
+            label="项目名称"
+            rules={[{ required: true, message: '请输入项目名称' }]}
           >
-            <Input.TextArea rows={3} placeholder='{"字段名": "必填或非必填"}' />
+            <Input placeholder="如：上线率、作业率" />
+          </Form.Item>
+          <Form.Item label="填报字段">
+            <Card size="small">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Typography.Text type="secondary">字段名 + 类型 + 是否必填</Typography.Text>
+                <Button size="small" icon={<PlusOutlined />} onClick={handleAddField}>添加字段</Button>
+              </div>
+              {fieldList.length === 0 && (
+                <Typography.Text type="secondary">暂无字段，请点击「添加字段」</Typography.Text>
+              )}
+              {fieldList.map((field, index) => (
+                <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <Input
+                    placeholder="字段名"
+                    value={field.name}
+                    onChange={(e) => handleFieldChange(index, 'name', e.target.value)}
+                    style={{ flex: 2 }}
+                  />
+                  <Select
+                    value={field.type}
+                    onChange={(val) => handleFieldChange(index, 'type', val)}
+                    style={{ flex: 1 }}
+                  >
+                    <Select.Option value="number">数字</Select.Option>
+                    <Select.Option value="text">文本</Select.Option>
+                  </Select>
+                  <Checkbox
+                    checked={field.required}
+                    onChange={(e) => handleFieldChange(index, 'required', e.target.checked)}
+                  >必填</Checkbox>
+                  <Button
+                    type="link"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleRemoveField(index)}
+                  />
+                </div>
+              ))}
+            </Card>
           </Form.Item>
           <Form.Item
             name="formula"

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
-import { Tree, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Card, Typography, Dropdown } from 'antd'
-import type { MenuProps } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
+import { Tree, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Card, Typography, Upload } from 'antd'
+import type { UploadProps } from 'antd'
+import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { Area, Org } from '../types'
 
@@ -20,14 +20,12 @@ function OrgManage() {
   const [orgModalVisible, setOrgModalVisible] = useState(false)
   const [editingAreaId, setEditingAreaId] = useState<number | null>(null)
   const [editingOrgId, setEditingOrgId] = useState<number | null>(null)
-  // 当前要新增的层级
   const [addOrgLevel, setAddOrgLevel] = useState<'bigclass' | 'class' | 'group'>('bigclass')
   const [form] = Form.useForm()
   const [orgForm] = Form.useForm()
-  // 级联选择状态
   const [formAreaId, setFormAreaId] = useState<number | undefined>()
   const [formBigClass, setFormBigClass] = useState<string | undefined>()
-  // 级联下拉选项
+
   const bigClassOptions = useMemo(() => {
     if (!formAreaId) return []
     const areaOrgs = orgs.filter((o) => o.area_id === formAreaId)
@@ -44,7 +42,6 @@ function OrgManage() {
     fetchData()
   }, [])
 
-  // 弹窗打开时，如果是编辑状态则初始化级联选择
   useEffect(() => {
     if (orgModalVisible && editingOrgId) {
       const org = orgs.find((o) => o.id === editingOrgId)
@@ -149,7 +146,6 @@ function OrgManage() {
   }
 
   const handleDeleteArea = async (id: number) => {
-    // 清理展开状态
     setExpandedKeys((prev) => prev.filter((k) => !String(k).startsWith(`area-${id}`)))
     const { error } = await supabase.from('area').delete().eq('id', id)
     if (error) {
@@ -206,7 +202,72 @@ function OrgManage() {
     }
   }
 
-  // 折叠的节点显示操作按钮，展开的节点隐藏按钮（让子级显示按钮）
+  // 导出 CSV
+  const handleExport = () => {
+    const rows = [['地区', '大班', '班级', '小组']]
+    orgs.forEach((o) => {
+      const area = areas.find((a) => a.id === o.area_id)
+      rows.push([area?.area_name || '', o.big_class, o.class_name, o.group_name])
+    })
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '组织架构.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // 导入 CSV
+  const uploadProps: UploadProps = {
+    accept: '.csv',
+    showUploadList: false,
+    beforeUpload: async (file) => {
+      const text = await file.text()
+      const lines = text.split('\n').filter((l) => l.trim())
+      if (lines.length < 2) {
+        message.warning('CSV 文件无有效数据')
+        return false
+      }
+      const header = lines[0].split(',').map((h) => h.replace(/"/g, '').trim())
+      const areaIdx = header.findIndex((h) => h.includes('地区'))
+      const bcIdx = header.findIndex((h) => h.includes('大班'))
+      const cIdx = header.findIndex((h) => h.includes('班级'))
+      const gIdx = header.findIndex((h) => h.includes('小组'))
+      if (areaIdx < 0 || bcIdx < 0 || cIdx < 0 || gIdx < 0) {
+        message.error('CSV 格式不正确，请使用导出模板')
+        return false
+      }
+      let imported = 0
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map((c) => c.replace(/"/g, '').trim())
+        if (!cols[areaIdx] || !cols[bcIdx] || !cols[cIdx] || !cols[gIdx]) continue
+        // 查找或创建地区
+        let area = areas.find((a) => a.area_name === cols[areaIdx])
+        if (!area) {
+          const { data: newArea } = await supabase.from('area').insert({ area_name: cols[areaIdx] }).select().single()
+          if (newArea) {
+            area = newArea
+            setAreas((prev) => [...prev, area!])
+          }
+        }
+        if (!area) continue
+        const { error } = await supabase.from('org').insert({
+          area_id: area.id,
+          big_class: cols[bcIdx],
+          class_name: cols[cIdx],
+          group_name: cols[gIdx],
+        })
+        if (!error) imported++
+      }
+      message.success(`成功导入 ${imported} 条组织`)
+      fetchData()
+      return false
+    },
+  }
+
+  // 折叠的节点显示操作按钮，展开的节点隐藏按钮
   const renderTreeActions = (node: any) => {
     if (expandedKeys.includes(node.key)) return null
 
@@ -231,11 +292,9 @@ function OrgManage() {
         }} />
       )
     } else if (node.key.startsWith('bigclass-')) {
-      // bigclass key 格式: bigclass-${areaId}-${bigClass}
       const [, areaId, bigClassName] = node.key.split('-')
       actions.push(
         <Button key="edit-bigclass" type="link" size="small" icon={<EditOutlined />} onClick={() => {
-          // 编辑任意一条属于该 bigclass 的 org 来修改 bigclass 名
           const existing = orgs.find((o) => o.area_id === Number(areaId) && o.big_class === bigClassName)
           if (existing) {
             setEditingOrgId(existing.id)
@@ -263,7 +322,6 @@ function OrgManage() {
         }} />
       )
     } else if (node.key.startsWith('class-')) {
-      // class key 格式: class-${bigClass}-${className}
       const [, bigClassName, className] = node.key.split('-')
       const areaId = orgs.find((o) => o.big_class === bigClassName && o.class_name === className)?.area_id
       actions.push(
@@ -324,32 +382,6 @@ function OrgManage() {
     </div>
   )
 
-  // 右上角新增按钮下拉菜单
-  const addMenuItems: MenuProps['items'] = [
-    {
-      key: 'area',
-      label: '新增地区',
-      onClick: () => { setEditingAreaId(null); form.resetFields(); setAreaModalVisible(true) },
-    },
-    { type: 'divider' },
-    {
-      key: 'bigclass',
-      label: '新增大班',
-      onClick: () => openAddOrgModal('bigclass', {}),
-    },
-    {
-      key: 'class',
-      label: '新增班级',
-      onClick: () => openAddOrgModal('class', {}),
-    },
-    {
-      key: 'group',
-      label: '新增小组',
-      onClick: () => openAddOrgModal('group', {}),
-    },
-  ]
-
-  // orgModal 的标题根据层级变化
   const orgModalTitle = (() => {
     if (editingOrgId) return '编辑组织'
     if (addOrgLevel === 'bigclass') return '新增大班'
@@ -361,9 +393,12 @@ function OrgManage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={3} style={{ margin: 0 }}>组织管理</Title>
-        <Dropdown menu={{ items: addMenuItems }} trigger={['click']} placement="bottomRight">
-          <Button type="primary" icon={<PlusOutlined />}>新增</Button>
-        </Dropdown>
+        <Space>
+          <Upload {...uploadProps}>
+            <Button icon={<UploadOutlined />}>批量导入</Button>
+          </Upload>
+          <Button icon={<DownloadOutlined />} onClick={handleExport}>导出</Button>
+        </Space>
       </div>
 
       <Card loading={loading}>
@@ -411,7 +446,6 @@ function OrgManage() {
             </Select>
           </Form.Item>
 
-          {/* 大班：新增大班=输入；新增班级/小组=选择；编辑=选择 */}
           {(addOrgLevel === 'bigclass' && !editingOrgId) ? (
             <Form.Item name="big_class" label="大班" rules={[{ required: true, message: '请输入大班名称' }]}>
               <Input placeholder="如：精进大班" />
@@ -424,7 +458,6 @@ function OrgManage() {
             </Form.Item>
           )}
 
-          {/* 班级：新增小组=选择；其他=输入；编辑=选择 */}
           {(addOrgLevel === 'class' && !editingOrgId) ? (
             <Form.Item name="class_name" label="班级" rules={[{ required: true, message: '请输入班级名称' }]}>
               <Input placeholder="如：1班" />
@@ -437,7 +470,6 @@ function OrgManage() {
             </Form.Item>
           )}
 
-          {/* 小组：新增=输入；编辑=输入（小组名不可选） */}
           <Form.Item name="group_name" label="小组" rules={[{ required: true, message: '请输入小组名称' }]}>
             <Input placeholder="如：第1小组" />
           </Form.Item>
