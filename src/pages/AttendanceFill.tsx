@@ -22,7 +22,6 @@ function AttendanceFill() {
 
   const checkTodayAttendance = async () => {
     setLoading(true)
-    // 使用本地日期，避免时区问题
     const today = dayjs().format('YYYY-MM-DD')
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -33,29 +32,17 @@ function AttendanceFill() {
     }
     setCurrentUser(user)
 
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', user.email)
-      .maybeSingle()
-
-    if (userError) console.error('user query error:', userError)
-    console.log('user email:', user.email, 'userData:', userData, 'userError:', userError)
+    // 并行查询：用户信息 + 当前学期
+    const [{ data: userData }, { data: currentSemester }] = await Promise.all([
+      supabase.from('users').select('*').eq('email', user.email).maybeSingle(),
+      supabase.from('semester').select('*').eq('is_current', 1).single(),
+    ])
 
     if (!userData) {
       message.error('用户信息不存在，请联系管理员在 users 表中添加邮箱为 ' + user.email + ' 的记录')
       setLoading(false)
       return
     }
-
-    const { data: currentSemester, error: semesterError } = await supabase
-      .from('semester')
-      .select('*')
-      .eq('is_current', 1)
-      .single()
-
-    if (semesterError) console.error('semester query error:', semesterError)
-    console.log('currentSemester:', currentSemester)
 
     if (!currentSemester) {
       message.warning('当前没有设置学期，请联系管理员')
@@ -64,8 +51,8 @@ function AttendanceFill() {
     }
     setSemester(currentSemester)
 
-    // 查询今日及之前的有效日程（包括正式学期开始日当天）
-    const { data: todaySchedule, error: scheduleError } = await supabase
+    // 查询最近的有效日程
+    const { data: todaySchedule } = await supabase
       .from('semester_schedule')
       .select('*')
       .eq('semester_id', currentSemester.id)
@@ -75,18 +62,7 @@ function AttendanceFill() {
       .limit(1)
       .single()
 
-    if (scheduleError) console.error('schedule query error:', scheduleError)
-    console.log('today:', today, '| semester_id:', currentSemester.id, '| todaySchedule:', todaySchedule, '| schedule_date:', todaySchedule?.schedule_date)
-
     if (!todaySchedule) {
-      // 尝试只按日期查询不过滤is_valid，看是否有记录
-      const { data: debugSchedule } = await supabase
-        .from('semester_schedule')
-        .select('*')
-        .eq('semester_id', currentSemester.id)
-        .eq('schedule_date', today)
-        .limit(1)
-      console.log('debugSchedule (no is_valid filter):', debugSchedule)
       message.info('今日无需填报')
       setLoading(false)
       return

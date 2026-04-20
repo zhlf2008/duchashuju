@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Switch, message, Popconfirm, Space, Tag, Checkbox, Select, Card, Typography } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
+import { Table, Button, Modal, Form, Input, Switch, message, Popconfirm, Space, Tag, Checkbox, Select, Card, Typography, Tooltip } from 'antd'
+import { PlusOutlined, DeleteOutlined, EditOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { AssessmentItem } from '../types'
 
@@ -216,10 +216,12 @@ function AssessmentManage() {
                 // 解析选项: 形如 "单选+必填=男,女" 或 "多选+必填=优秀,良好"
                 const eqIdx = valStr.indexOf('=')
                 if (eqIdx !== -1) options = valStr.substring(eqIdx + 1)
+                // 必须是 "+必填" 而不是 "非必填" 中的 "必填"
+                const required = valStr.includes('+必填') && !valStr.includes('非必填')
                 return {
                   name,
                   type,
-                  required: valStr.includes('必填'),
+                  required,
                   options,
                 }
               })
@@ -320,6 +322,24 @@ function AssessmentManage() {
               {fieldList.map((field, index) => (
                 <div key={index}>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center' }}>
+                    <Tooltip title="上移">
+                      <Button size="small" icon={<UpOutlined />} disabled={index === 0} onClick={() => {
+                        const newList = [...fieldList]
+                        const temp = newList[index]
+                        newList[index] = newList[index - 1]
+                        newList[index - 1] = temp
+                        setFieldList(newList)
+                      }} style={{ padding: '0 4px' }} />
+                    </Tooltip>
+                    <Tooltip title="下移">
+                      <Button size="small" icon={<DownOutlined />} disabled={index === fieldList.length - 1} onClick={() => {
+                        const newList = [...fieldList]
+                        const temp = newList[index]
+                        newList[index] = newList[index + 1]
+                        newList[index + 1] = temp
+                        setFieldList(newList)
+                      }} style={{ padding: '0 4px' }} />
+                    </Tooltip>
                     <Input
                       placeholder="字段名"
                       value={field.name}
@@ -351,7 +371,7 @@ function AssessmentManage() {
                     />
                   </div>
                   {['radio', 'checkbox', 'multiSelect'].includes(field.type) && (
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', paddingLeft: 4 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', paddingLeft: 68 }}>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>选项:</Typography.Text>
                       <Input
                         placeholder="用逗号分隔，如：优秀,良好,及格"

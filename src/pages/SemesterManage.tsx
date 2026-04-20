@@ -177,32 +177,40 @@ function SemesterManage() {
 
 
 
-  // Inline: 切换日程考核项目勾选
+  // Inline: 切换日程考核项目勾选（乐观更新）
   const handleToggleScheduleItems = async (record: ScheduleDate, checkedIds: number[]) => {
+    // 先乐观更新 UI
+    setSchedules((prev) =>
+      prev.map((s) => s.id === record.id ? { ...s, item_ids: checkedIds.join(',') } : s)
+    )
     const { error } = await supabase
       .from('semester_schedule')
       .update({ item_ids: checkedIds.join(',') })
       .eq('id', record.id)
     if (error) {
       message.error('保存失败')
-    } else {
+      // 失败则回滚
       setSchedules((prev) =>
-        prev.map((s) => s.id === record.id ? { ...s, item_ids: checkedIds.join(',') } : s)
+        prev.map((s) => s.id === record.id ? { ...s, item_ids: record.item_ids } : s)
       )
     }
   }
 
-  // Inline: 切换日程状态
+  // Inline: 切换日程状态（乐观更新）
   const handleToggleScheduleValid = async (record: ScheduleDate, isValid: boolean) => {
+    const newVal = isValid ? 1 : 0
+    // 先乐观更新 UI
+    setSchedules((prev) =>
+      prev.map((s) => s.id === record.id ? { ...s, is_valid: newVal } : s)
+    )
     const { error } = await supabase
       .from('semester_schedule')
-      .update({ is_valid: isValid ? 1 : 0 })
+      .update({ is_valid: newVal })
       .eq('id', record.id)
     if (error) {
       message.error('保存失败')
-    } else {
       setSchedules((prev) =>
-        prev.map((s) => s.id === record.id ? { ...s, is_valid: isValid ? 1 : 0 } : s)
+        prev.map((s) => s.id === record.id ? { ...s, is_valid: record.is_valid } : s)
       )
     }
   }
