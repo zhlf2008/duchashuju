@@ -47,12 +47,30 @@ function SemesterManage() {
     if (data) setSchedules(data)
   }
 
-  const generateSchedules = async (semesterId: number, startDate: string, endDate: string) => {
-    const start = dayjs(startDate)
+  const generateSchedules = async (semesterId: number, startDate: string, endDate: string, trialWeeks: number = 0) => {
+    // 试晨读日期在 startDate 之前
+    const trialStart = trialWeeks > 0 ? dayjs(startDate).subtract(trialWeeks * 7, 'day') : null
+    const formalStart = dayjs(startDate)
     const end = dayjs(endDate)
     const schedules: any[] = []
-    let current = start
 
+    // 生成试晨读日期
+    if (trialStart) {
+      let current = trialStart
+      while (current.isBefore(formalStart)) {
+        schedules.push({
+          semester_id: semesterId,
+          schedule_date: current.format('YYYY-MM-DD'),
+          week_day: current.day() + 1,
+          item_ids: '',
+          is_valid: 1,
+        })
+        current = current.add(1, 'day')
+      }
+    }
+
+    // 生成正式学期日期
+    let current = formalStart
     while (current.isBefore(end) || current.isSame(end)) {
       schedules.push({
         semester_id: semesterId,
@@ -94,7 +112,7 @@ function SemesterManage() {
     if (error) {
       message.error('添加失败: ' + error.message)
     } else {
-      await generateSchedules(data.id, start_date, end_date)
+      await generateSchedules(data.id, start_date, end_date, values.trial_weeks || 0)
       message.success('添加成功，已生成日程')
       setModalVisible(false)
       form.resetFields()
@@ -111,6 +129,10 @@ function SemesterManage() {
       await supabase.from('semester').update({ is_current: 0 }).eq('is_current', 1)
     }
 
+    // 获取原学期数据，比较是否需要重新生成日程
+    const original = data.find((s) => s.id === editingId)
+    const trialWeeksChanged = original && (original.trial_weeks || 0) !== (values.trial_weeks || 0)
+
     const { error } = await supabase.from('semester').update({
       semester_name: values.semester_name,
       start_date,
@@ -122,7 +144,14 @@ function SemesterManage() {
     if (error) {
       message.error('修改失败: ' + error.message)
     } else {
-      message.success('修改成功')
+      if (trialWeeksChanged) {
+        // 删除旧日程，重新生成
+        await supabase.from('semester_schedule').delete().eq('semester_id', editingId)
+        await generateSchedules(editingId, start_date, end_date, values.trial_weeks || 0)
+        message.success('修改成功，已重新生成日程')
+      } else {
+        message.success('修改成功')
+      }
       setModalVisible(false)
       setEditingId(null)
       form.resetFields()
@@ -159,15 +188,26 @@ function SemesterManage() {
 
   const scheduleColumns = [
     {
+      title: '类型',
+      width: 90,
+      render: (_: any, record: ScheduleDate) => {
+        if (!currentSemester) return '-'
+        const trialWeeks = currentSemester.trial_weeks || 0
+        const formalStart = dayjs(currentSemester.start_date)
+        const isTrial = trialWeeks > 0 && dayjs(record.schedule_date).isBefore(formalStart)
+        return isTrial ? <Tag color="orange">试晨读</Tag> : <Tag color="green">正式</Tag>
+      },
+    },
+    {
       title: '日期',
       dataIndex: 'schedule_date',
-      width: 120,
+      width: 100,
       render: (date: string) => dayjs(date).format('MM/DD')
     },
     {
       title: '星期',
       dataIndex: 'week_day',
-      width: 80,
+      width: 70,
       render: (day: number) => weekDayNames[day] || '-'
     },
     {

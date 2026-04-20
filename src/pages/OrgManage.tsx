@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Tree, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Card, Typography, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
@@ -20,16 +20,46 @@ function OrgManage() {
   const [orgModalVisible, setOrgModalVisible] = useState(false)
   const [editingAreaId, setEditingAreaId] = useState<number | null>(null)
   const [editingOrgId, setEditingOrgId] = useState<number | null>(null)
-  // 新增组织时预填的上下文
-  const [addOrgContext, setAddOrgContext] = useState<{ area_id?: number; big_class?: string; class_name?: string }>({})
   // 当前要新增的层级
   const [addOrgLevel, setAddOrgLevel] = useState<'bigclass' | 'class' | 'group'>('bigclass')
   const [form] = Form.useForm()
   const [orgForm] = Form.useForm()
+  // 级联选择状态
+  const [formAreaId, setFormAreaId] = useState<number | undefined>()
+  const [formBigClass, setFormBigClass] = useState<string | undefined>()
+  // 级联下拉选项
+  const bigClassOptions = useMemo(() => {
+    if (!formAreaId) return []
+    const areaOrgs = orgs.filter((o) => o.area_id === formAreaId)
+    return [...new Set(areaOrgs.map((o) => o.big_class))].map((bc) => ({ value: bc, label: bc }))
+  }, [orgs, formAreaId])
+
+  const classOptions = useMemo(() => {
+    if (!formAreaId || !formBigClass) return []
+    const filtered = orgs.filter((o) => o.area_id === formAreaId && o.big_class === formBigClass)
+    return [...new Set(filtered.map((o) => o.class_name))].map((cn) => ({ value: cn, label: cn }))
+  }, [orgs, formAreaId, formBigClass])
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  // 弹窗打开时，如果是编辑状态则初始化级联选择
+  useEffect(() => {
+    if (orgModalVisible && editingOrgId) {
+      const org = orgs.find((o) => o.id === editingOrgId)
+      if (org) {
+        setFormAreaId(org.area_id)
+        setFormBigClass(org.big_class)
+        orgForm.setFieldsValue({
+          area_id: org.area_id,
+          big_class: org.big_class,
+          class_name: org.class_name,
+          group_name: org.group_name,
+        })
+      }
+    }
+  }, [orgModalVisible])
 
   const fetchData = async () => {
     setLoading(true)
@@ -132,7 +162,8 @@ function OrgManage() {
 
   const openAddOrgModal = (level: 'bigclass' | 'class' | 'group', context: { area_id?: number; big_class?: string; class_name?: string } = {}) => {
     setAddOrgLevel(level)
-    setAddOrgContext(context)
+    setFormAreaId(context.area_id)
+    setFormBigClass(context.big_class)
     orgForm.resetFields()
     orgForm.setFieldsValue(context)
     setOrgModalVisible(true)
@@ -175,9 +206,9 @@ function OrgManage() {
     }
   }
 
-  // 仅对已展开的节点渲染操作按钮
+  // 折叠的节点显示操作按钮，展开的节点隐藏按钮（让子级显示按钮）
   const renderTreeActions = (node: any) => {
-    if (!expandedKeys.includes(node.key)) return null
+    if (expandedKeys.includes(node.key)) return null
 
     const actions: React.ReactNode[] = []
 
@@ -329,7 +360,7 @@ function OrgManage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>组织管理（四级架构）</Title>
+        <Title level={3} style={{ margin: 0 }}>组织管理</Title>
         <Dropdown menu={{ items: addMenuItems }} trigger={['click']} placement="bottomRight">
           <Button type="primary" icon={<PlusOutlined />}>新增</Button>
         </Dropdown>
@@ -370,20 +401,45 @@ function OrgManage() {
       >
         <Form form={orgForm} onFinish={editingOrgId ? handleEditOrg : handleAddOrg} layout="vertical">
           <Form.Item name="area_id" label="地区" rules={[{ required: true, message: '请选择地区' }]}>
-            <Select placeholder="请选择地区">
+            <Select
+              placeholder="请选择地区"
+              onChange={(val) => { setFormAreaId(val); setFormBigClass(undefined); orgForm.setFieldsValue({ big_class: undefined, class_name: undefined }) }}
+            >
               {areas.map((a) => (
                 <Select.Option key={a.id} value={a.id}>{a.area_name}</Select.Option>
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="big_class" label="大班" rules={[{ required: true, message: '请输入大班名称' }]}>
-            <Input placeholder="如：精进大班" disabled={addOrgLevel !== 'bigclass' && !!addOrgContext.big_class} />
-          </Form.Item>
-          <Form.Item name="class_name" label="班级" rules={[{ required: true, message: '请输入班级名称' }]}>
-            <Input placeholder="如：1班" disabled={addOrgLevel !== 'bigclass' && addOrgLevel !== 'class' && !!addOrgContext.class_name} />
-          </Form.Item>
+
+          {/* 大班：新增大班=输入；新增班级/小组=选择；编辑=选择 */}
+          {(addOrgLevel === 'bigclass' && !editingOrgId) ? (
+            <Form.Item name="big_class" label="大班" rules={[{ required: true, message: '请输入大班名称' }]}>
+              <Input placeholder="如：精进大班" />
+            </Form.Item>
+          ) : (
+            <Form.Item name="big_class" label="大班" rules={[{ required: true, message: '请选择大班' }]}>
+              <Select placeholder="请选择大班" allowClear onChange={(val) => { setFormBigClass(val); orgForm.setFieldsValue({ class_name: undefined }) }}>
+                {bigClassOptions.map((o) => <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>)}
+              </Select>
+            </Form.Item>
+          )}
+
+          {/* 班级：新增小组=选择；其他=输入；编辑=选择 */}
+          {(addOrgLevel === 'class' && !editingOrgId) ? (
+            <Form.Item name="class_name" label="班级" rules={[{ required: true, message: '请输入班级名称' }]}>
+              <Input placeholder="如：1班" />
+            </Form.Item>
+          ) : (
+            <Form.Item name="class_name" label="班级" rules={[{ required: true, message: '请选择班级' }]}>
+              <Select placeholder="请选择班级" allowClear disabled={!formBigClass}>
+                {classOptions.map((o) => <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>)}
+              </Select>
+            </Form.Item>
+          )}
+
+          {/* 小组：新增=输入；编辑=输入（小组名不可选） */}
           <Form.Item name="group_name" label="小组" rules={[{ required: true, message: '请输入小组名称' }]}>
-            <Input placeholder="如：第1小组" disabled={addOrgLevel === 'bigclass' || addOrgLevel === 'class'} />
+            <Input placeholder="如：第1小组" />
           </Form.Item>
         </Form>
       </Modal>
