@@ -136,7 +136,7 @@ function LayoutPage() {
           fontSize: 18,
           fontWeight: 'bold'
         }}>
-          考勤督察系统
+          督察管理系统
         </div>
         <Menu
           theme="dark"
