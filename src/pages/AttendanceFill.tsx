@@ -22,6 +22,7 @@ function AttendanceFill() {
 
   const checkTodayAttendance = async () => {
     setLoading(true)
+    // 使用本地日期，避免时区问题
     const today = dayjs().format('YYYY-MM-DD')
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -57,12 +58,15 @@ function AttendanceFill() {
     }
     setSemester(currentSemester)
 
+    // 查询今日及之前的有效日程（包括正式学期开始日当天）
     const { data: todaySchedule } = await supabase
       .from('semester_schedule')
       .select('*')
       .eq('semester_id', currentSemester.id)
-      .eq('schedule_date', today)
+      .lte('schedule_date', today)
       .eq('is_valid', 1)
+      .order('schedule_date', { ascending: false })
+      .limit(1)
       .single()
 
     if (!todaySchedule) {
