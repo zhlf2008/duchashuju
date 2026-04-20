@@ -3,7 +3,6 @@ import { Layout, Menu, Avatar, Dropdown, message } from 'antd'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   DashboardOutlined,
-  EnvironmentOutlined,
   ApartmentOutlined,
   TeamOutlined,
   CalendarOutlined,
@@ -48,7 +47,6 @@ function LayoutPage() {
 
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: '首页' },
-    { key: '/area', icon: <EnvironmentOutlined />, label: '地区管理' },
     { key: '/org', icon: <ApartmentOutlined />, label: '组织管理' },
     { key: '/user', icon: <TeamOutlined />, label: '人员管理' },
     { key: '/semester', icon: <CalendarOutlined />, label: '学期管理' },

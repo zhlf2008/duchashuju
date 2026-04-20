@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Tree, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Card, Typography } from 'antd'
+import { Tree, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Card, Typography, Dropdown } from 'antd'
+import type { MenuProps } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { Area, Org } from '../types'
@@ -14,10 +15,15 @@ function OrgManage() {
   const [areas, setAreas] = useState<Area[]>([])
   const [orgs, setOrgs] = useState<Org[]>([])
   const [loading, setLoading] = useState(false)
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
   const [areaModalVisible, setAreaModalVisible] = useState(false)
   const [orgModalVisible, setOrgModalVisible] = useState(false)
   const [editingAreaId, setEditingAreaId] = useState<number | null>(null)
   const [editingOrgId, setEditingOrgId] = useState<number | null>(null)
+  // 新增组织时预填的上下文
+  const [addOrgContext, setAddOrgContext] = useState<{ area_id?: number; big_class?: string; class_name?: string }>({})
+  // 当前要新增的层级
+  const [addOrgLevel, setAddOrgLevel] = useState<'bigclass' | 'class' | 'group'>('bigclass')
   const [form] = Form.useForm()
   const [orgForm] = Form.useForm()
 
@@ -68,7 +74,7 @@ function OrgManage() {
 
         return {
           title: bigClass,
-          key: `bigclass-${bigClass}`,
+          key: `bigclass-${area.id}-${bigClass}`,
           children: classChildren,
         }
       })
@@ -80,6 +86,10 @@ function OrgManage() {
         children,
       }
     })
+  }
+
+  const handleExpand = (keys: React.Key[]) => {
+    setExpandedKeys(keys)
   }
 
   const handleAddArea = async (values: { area_name: string; remark?: string }) => {
@@ -109,6 +119,8 @@ function OrgManage() {
   }
 
   const handleDeleteArea = async (id: number) => {
+    // 清理展开状态
+    setExpandedKeys((prev) => prev.filter((k) => !String(k).startsWith(`area-${id}`)))
     const { error } = await supabase.from('area').delete().eq('id', id)
     if (error) {
       message.error('删除失败: ' + error.message)
@@ -116,6 +128,14 @@ function OrgManage() {
       message.success('删除成功')
       fetchData()
     }
+  }
+
+  const openAddOrgModal = (level: 'bigclass' | 'class' | 'group', context: { area_id?: number; big_class?: string; class_name?: string } = {}) => {
+    setAddOrgLevel(level)
+    setAddOrgContext(context)
+    orgForm.resetFields()
+    orgForm.setFieldsValue(context)
+    setOrgModalVisible(true)
   }
 
   const handleAddOrg = async (values: { area_id: number; big_class: string; class_name: string; group_name: string }) => {
@@ -145,6 +165,7 @@ function OrgManage() {
   }
 
   const handleDeleteOrg = async (id: number) => {
+    setExpandedKeys((prev) => prev.filter((k) => !String(k).startsWith(`org-${id}`)))
     const { error } = await supabase.from('org').delete().eq('id', id)
     if (error) {
       message.error('删除失败: ' + error.message)
@@ -154,69 +175,107 @@ function OrgManage() {
     }
   }
 
+  // 仅对已展开的节点渲染操作按钮
   const renderTreeActions = (node: any) => {
+    if (!expandedKeys.includes(node.key)) return null
+
     const actions: React.ReactNode[] = []
 
     if (node.key.startsWith('area-')) {
       actions.push(
-        <Button
-          key="edit-area"
-          type="link"
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => {
-            setEditingAreaId(node.id)
-            form.setFieldsValue({ area_name: node.area_name, remark: node.remark })
-            setAreaModalVisible(true)
-          }}
-        />
+        <Button key="edit-area" type="link" size="small" icon={<EditOutlined />} onClick={() => {
+          setEditingAreaId(node.id)
+          form.setFieldsValue({ area_name: node.area_name, remark: node.remark })
+          setAreaModalVisible(true)
+        }} />
       )
       actions.push(
-        <Popconfirm
-          key="delete-area"
-          title="确定删除？该操作会删除地区下所有组织"
-          onConfirm={() => handleDeleteArea(node.id)}
-        >
+        <Popconfirm key="delete-area" title="确定删除？该操作会删除地区下所有组织" onConfirm={() => handleDeleteArea(node.id)}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} />
         </Popconfirm>
       )
       actions.push(
-        <Button
-          key="add-org"
-          type="link"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingOrgId(null)
-            orgForm.resetFields()
-            orgForm.setFieldsValue({ area_id: node.id })
+        <Button key="add-bigclass" type="link" size="small" icon={<PlusOutlined />} onClick={() => {
+          openAddOrgModal('bigclass', { area_id: node.id })
+        }} />
+      )
+    } else if (node.key.startsWith('bigclass-')) {
+      // bigclass key 格式: bigclass-${areaId}-${bigClass}
+      const [, areaId, bigClassName] = node.key.split('-')
+      actions.push(
+        <Button key="edit-bigclass" type="link" size="small" icon={<EditOutlined />} onClick={() => {
+          // 编辑任意一条属于该 bigclass 的 org 来修改 bigclass 名
+          const existing = orgs.find((o) => o.area_id === Number(areaId) && o.big_class === bigClassName)
+          if (existing) {
+            setEditingOrgId(existing.id)
+            orgForm.setFieldsValue(existing)
             setOrgModalVisible(true)
-          }}
-        />
+          }
+        }} />
+      )
+      actions.push(
+        <Popconfirm key="delete-bigclass" title="确定删除该大班及其所有下级？" onConfirm={async () => {
+          const toDelete = orgs.filter((o) => o.area_id === Number(areaId) && o.big_class === bigClassName)
+          for (const org of toDelete) {
+            await supabase.from('org').delete().eq('id', org.id)
+          }
+          setExpandedKeys((prev) => prev.filter((k) => !String(k).startsWith(`bigclass-${areaId}-${bigClassName}`)))
+          message.success('删除成功')
+          fetchData()
+        }}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      )
+      actions.push(
+        <Button key="add-class" type="link" size="small" icon={<PlusOutlined />} onClick={() => {
+          openAddOrgModal('class', { area_id: Number(areaId), big_class: bigClassName })
+        }} />
+      )
+    } else if (node.key.startsWith('class-')) {
+      // class key 格式: class-${bigClass}-${className}
+      const [, bigClassName, className] = node.key.split('-')
+      const areaId = orgs.find((o) => o.big_class === bigClassName && o.class_name === className)?.area_id
+      actions.push(
+        <Button key="edit-class" type="link" size="small" icon={<EditOutlined />} onClick={() => {
+          const existing = orgs.find((o) => o.big_class === bigClassName && o.class_name === className)
+          if (existing) {
+            setEditingOrgId(existing.id)
+            orgForm.setFieldsValue(existing)
+            setOrgModalVisible(true)
+          }
+        }} />
+      )
+      actions.push(
+        <Popconfirm key="delete-class" title="确定删除该班级及其所有小组？" onConfirm={async () => {
+          const toDelete = orgs.filter((o) => o.big_class === bigClassName && o.class_name === className)
+          for (const org of toDelete) {
+            await supabase.from('org').delete().eq('id', org.id)
+          }
+          setExpandedKeys((prev) => prev.filter((k) => !String(k).startsWith(`class-${bigClassName}-${className}`)))
+          message.success('删除成功')
+          fetchData()
+        }}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      )
+      actions.push(
+        <Button key="add-group" type="link" size="small" icon={<PlusOutlined />} onClick={() => {
+          openAddOrgModal('group', { area_id: areaId, big_class: bigClassName, class_name: className })
+        }} />
       )
     } else if (node.isOrg && node.orgId) {
       actions.push(
-        <Button
-          key="edit-org"
-          type="link"
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => {
-            const org = orgs.find((o) => o.id === node.orgId)
-            if (org) {
-              setEditingOrgId(org.id)
-              orgForm.setFieldsValue(org)
-              setOrgModalVisible(true)
-            }
-          }}
-        />
+        <Button key="edit-org" type="link" size="small" icon={<EditOutlined />} onClick={() => {
+          const org = orgs.find((o) => o.id === node.orgId)
+          if (org) {
+            setEditingOrgId(org.id)
+            orgForm.setFieldsValue(org)
+            setOrgModalVisible(true)
+          }
+        }} />
       )
       actions.push(
-        <Popconfirm
-          key="delete-org"
-          title="确定删除？"
-          onConfirm={() => handleDeleteOrg(node.orgId)}
-        >
+        <Popconfirm key="delete-org" title="确定删除？" onConfirm={() => handleDeleteOrg(node.orgId)}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} />
         </Popconfirm>
       )
@@ -234,25 +293,54 @@ function OrgManage() {
     </div>
   )
 
+  // 右上角新增按钮下拉菜单
+  const addMenuItems: MenuProps['items'] = [
+    {
+      key: 'area',
+      label: '新增地区',
+      onClick: () => { setEditingAreaId(null); form.resetFields(); setAreaModalVisible(true) },
+    },
+    { type: 'divider' },
+    {
+      key: 'bigclass',
+      label: '新增大班',
+      onClick: () => openAddOrgModal('bigclass', {}),
+    },
+    {
+      key: 'class',
+      label: '新增班级',
+      onClick: () => openAddOrgModal('class', {}),
+    },
+    {
+      key: 'group',
+      label: '新增小组',
+      onClick: () => openAddOrgModal('group', {}),
+    },
+  ]
+
+  // orgModal 的标题根据层级变化
+  const orgModalTitle = (() => {
+    if (editingOrgId) return '编辑组织'
+    if (addOrgLevel === 'bigclass') return '新增大班'
+    if (addOrgLevel === 'class') return '新增班级'
+    return '新增小组'
+  })()
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={3} style={{ margin: 0 }}>组织管理（四级架构）</Title>
-        <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingAreaId(null); form.resetFields(); setAreaModalVisible(true) }}>
-            新增地区
-          </Button>
-          <Button icon={<PlusOutlined />} onClick={() => { setEditingOrgId(null); orgForm.resetFields(); setOrgModalVisible(true) }}>
-            新增组织
-          </Button>
-        </Space>
+        <Dropdown menu={{ items: addMenuItems }} trigger={['click']} placement="bottomRight">
+          <Button type="primary" icon={<PlusOutlined />}>新增</Button>
+        </Dropdown>
       </div>
 
       <Card loading={loading}>
         <Tree
           treeData={treeData}
           titleRender={titleRender}
-          defaultExpandAll
+          expandedKeys={expandedKeys}
+          onExpand={handleExpand}
           showLine={{ showLeafIcon: false }}
         />
       </Card>
@@ -274,7 +362,7 @@ function OrgManage() {
       </Modal>
 
       <Modal
-        title={editingOrgId ? '编辑组织' : '新增组织'}
+        title={orgModalTitle}
         open={orgModalVisible}
         onCancel={() => { setOrgModalVisible(false); setEditingOrgId(null); orgForm.resetFields() }}
         onOk={() => orgForm.submit()}
@@ -289,13 +377,13 @@ function OrgManage() {
             </Select>
           </Form.Item>
           <Form.Item name="big_class" label="大班" rules={[{ required: true, message: '请输入大班名称' }]}>
-            <Input placeholder="如：精进大班" />
+            <Input placeholder="如：精进大班" disabled={addOrgLevel !== 'bigclass' && !!addOrgContext.big_class} />
           </Form.Item>
           <Form.Item name="class_name" label="班级" rules={[{ required: true, message: '请输入班级名称' }]}>
-            <Input placeholder="如：1班" />
+            <Input placeholder="如：1班" disabled={addOrgLevel !== 'bigclass' && addOrgLevel !== 'class' && !!addOrgContext.class_name} />
           </Form.Item>
           <Form.Item name="group_name" label="小组" rules={[{ required: true, message: '请输入小组名称' }]}>
-            <Input placeholder="如：第1小组" />
+            <Input placeholder="如：第1小组" disabled={addOrgLevel === 'bigclass' || addOrgLevel === 'class'} />
           </Form.Item>
         </Form>
       </Modal>
