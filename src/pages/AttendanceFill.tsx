@@ -95,14 +95,16 @@ function AttendanceFill() {
     setLoading(false)
   }
 
-  const calculateResult = (item: AssessmentItem, values: any): number => {
+  const calculateResult = (item: AssessmentItem, values: any, prefix: string): number => {
     try {
       let formula = item.formula
       const fields = typeof item.fields === 'string' ? JSON.parse(item.fields) : item.fields
 
       Object.keys(fields).forEach((fieldName) => {
         const regex = new RegExp(fieldName, 'g')
-        formula = formula.replace(regex, values[fieldName] || 0)
+        // 从带前缀的表单值中提取（去掉 item.id_ 前缀）
+        const rawVal = values[`${prefix}_${fieldName}`] || values[fieldName] || 0
+        formula = formula.replace(regex, rawVal)
       })
 
       let result = eval(formula)
@@ -115,6 +117,23 @@ function AttendanceFill() {
   const onFinish = async (values: any) => {
     if (!currentUser || !schedule || !semester) return
 
+    // 数据验证：必填项检查
+    for (const item of assessmentItems) {
+      const fields = typeof item.fields === 'string' ? JSON.parse(item.fields) : item.fields
+      for (const [fieldName, val] of Object.entries(fields)) {
+        const valStr = String(val || '')
+        const isRequired = valStr.includes('+必填') && !valStr.includes('非必填')
+        if (isRequired) {
+          const fieldVal = values[`${item.id}_${fieldName}`]
+          if (fieldVal === undefined || fieldVal === null || fieldVal === '') {
+            message.error(`请填写必填项「${fieldName}」`)
+            setSubmitting(false)
+            return
+          }
+        }
+      }
+    }
+
     setSubmitting(true)
 
     const { data: userData } = await supabase
@@ -125,20 +144,32 @@ function AttendanceFill() {
 
     const resultData: Record<string, number> = {}
     let totalRate = 0
+    let hasOver100 = false
 
     assessmentItems.forEach((item) => {
-      const result = calculateResult(item, values)
+      const result = calculateResult(item, values, String(item.id))
       resultData[item.item_name] = result
+      if (result > 100) hasOver100 = true
       totalRate += result
     })
+
+    if (hasOver100) {
+      message.error('考核结果不能超过100%，请检查输入数据')
+      setSubmitting(false)
+      return
+    }
 
     const dailyRate = assessmentItems.length > 0 ? Math.round((totalRate / assessmentItems.length) * 100) / 100 : 0
 
     const fillData: Record<string, number> = {}
-    Object.keys(values).forEach((key) => {
-      if (typeof values[key] === 'number') {
-        fillData[key] = values[key]
-      }
+    assessmentItems.forEach((item) => {
+      const fields = typeof item.fields === 'string' ? JSON.parse(item.fields) : item.fields
+      Object.keys(fields).forEach((fieldName) => {
+        const val = values[`${item.id}_${fieldName}`]
+        if (typeof val === 'number') {
+          fillData[`${item.id}_${fieldName}`] = val
+        }
+      })
     })
 
     const { error } = await supabase.from('attendance').upsert({
@@ -204,15 +235,20 @@ function AttendanceFill() {
         >
           {assessmentItems.map((item) => {
             const fields = typeof item.fields === 'string' ? JSON.parse(item.fields) : item.fields
+            // 从字段对象中提取必填状态，格式可能是 '数字+必填'、'非必填'、'文本' 等
+            const getRequired = (val: any): boolean => {
+              const valStr = String(val || '')
+              return valStr.includes('+必填') && !valStr.includes('非必填')
+            }
             return (
               <Card key={item.id} title={item.item_name} style={{ marginBottom: 16 }}>
                 <Row gutter={16}>
-                  {Object.entries(fields).map(([fieldName, required]) => (
+                  {Object.entries(fields).map(([fieldName, val]) => (
                     <Col span={12} key={fieldName}>
                       <Form.Item
-                        name={fieldName}
+                        name={`${item.id}_${fieldName}`}
                         label={fieldName}
-                        rules={[{ required: required === '必填', message: `请输入${fieldName}` }]}
+                        rules={[{ required: getRequired(val), message: `请输入${fieldName}` }]}
                       >
                         <Input type="number" placeholder={`请输入${fieldName}`} />
                       </Form.Item>

@@ -47,7 +47,7 @@ function DataSummary() {
     setLoading(true)
     let query = supabase
       .from('attendance')
-      .select('*, org:org_id(*, area:area_id(area_name))')
+      .select('*, org:org_id(*, area:area_id(area_name)), schedule:schedule_id(schedule_date), user:fill_user_id(name)')
       .eq('semester_id', selectedSemester)
 
     if (selectedOrg) {
@@ -88,6 +88,7 @@ function DataSummary() {
       dataIndex: 'schedule_date',
       key: 'schedule_date',
       width: 120,
+      render: (_: any, record: any) => record.schedule?.schedule_date || '-',
     },
     {
       title: '出勤率',
@@ -95,6 +96,13 @@ function DataSummary() {
       key: 'daily_rate',
       width: 100,
       render: (rate: number) => `${rate}%`,
+    },
+    {
+      title: '填报人',
+      dataIndex: 'fill_user_id',
+      key: 'fill_user_id',
+      width: 100,
+      render: (_: any, record: any) => record.user?.name || '-',
     },
     {
       title: '填报时间',
