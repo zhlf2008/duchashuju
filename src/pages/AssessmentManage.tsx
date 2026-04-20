@@ -159,22 +159,27 @@ function AssessmentManage() {
       ),
     },
     { title: 'ID', dataIndex: 'id', width: 60 },
-    { title: '项目名称', dataIndex: 'item_name' },
+    { title: '项目名称', dataIndex: 'item_name', width: 150 },
     {
       title: '填报字段',
       dataIndex: 'fields',
+      width: 300,
       render: (fields: any) => {
         if (!fields) return '-'
         if (typeof fields === 'string') fields = JSON.parse(fields)
-        return Object.entries(fields).map(([key, val]) => {
-          const valStr = val as string
-          let color = 'default'
-          if (valStr.includes('必填')) color = 'blue'
-          if (valStr.includes('数字')) color = 'green'
-          if (valStr.includes('图片')) color = 'purple'
-          if (valStr.includes('单选') || valStr.includes('多选')) color = 'orange'
-          return <Tag key={key} color={color}>{key}</Tag>
-        })
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {Object.entries(fields).map(([key, val]) => {
+              const valStr = val as string
+              let color = 'default'
+              if (valStr.includes('必填')) color = 'blue'
+              if (valStr.includes('数字')) color = 'green'
+              if (valStr.includes('图片')) color = 'purple'
+              if (valStr.includes('单选') || valStr.includes('多选')) color = 'orange'
+              return <Tag key={key} color={color}>{key}</Tag>
+            })}
+          </div>
+        )
       },
     },
     {
@@ -192,7 +197,7 @@ function AssessmentManage() {
     },
     {
       title: '操作',
-      width: 150,
+      width: 120,
       render: (_: any, record: AssessmentItem) => (
         <Space>
           <Button
@@ -282,6 +287,7 @@ function AssessmentManage() {
         rowKey="id"
         loading={loading}
         rowSelection={rowSelection}
+        scroll={{ x: 900 }}
       />
       <Modal
         title={editingId ? '编辑考核项目' : '新增考核项目'}
