@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, DatePicker, Switch, message, Popconfirm, Space, Tag, Card, Typography, Checkbox } from 'antd'
+import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Switch, message, Popconfirm, Space, Tag, Card, Typography, Checkbox } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import dayjs from 'dayjs'
@@ -75,7 +75,7 @@ function SemesterManage() {
     await supabase.from('semester_schedule').insert(schedulesWithItems)
   }
 
-  const handleAdd = async (values: { semester_name: string; date_range: [dayjs.Dayjs, dayjs.Dayjs]; is_current: boolean }) => {
+  const handleAdd = async (values: { semester_name: string; date_range: [dayjs.Dayjs, dayjs.Dayjs]; trial_weeks: number; is_current: boolean }) => {
     const start_date = values.date_range[0].format('YYYY-MM-DD')
     const end_date = values.date_range[1].format('YYYY-MM-DD')
 
@@ -87,6 +87,7 @@ function SemesterManage() {
       semester_name: values.semester_name,
       start_date,
       end_date,
+      trial_weeks: values.trial_weeks || 0,
       is_current: values.is_current ? 1 : 0,
     }]).select().single()
 
@@ -101,7 +102,7 @@ function SemesterManage() {
     }
   }
 
-  const handleEdit = async (values: { semester_name: string; date_range: [dayjs.Dayjs, dayjs.Dayjs]; is_current: boolean }) => {
+  const handleEdit = async (values: { semester_name: string; date_range: [dayjs.Dayjs, dayjs.Dayjs]; trial_weeks: number; is_current: boolean }) => {
     if (!editingId) return
     const start_date = values.date_range[0].format('YYYY-MM-DD')
     const end_date = values.date_range[1].format('YYYY-MM-DD')
@@ -114,6 +115,7 @@ function SemesterManage() {
       semester_name: values.semester_name,
       start_date,
       end_date,
+      trial_weeks: values.trial_weeks || 0,
       is_current: values.is_current ? 1 : 0,
     }).eq('id', editingId)
 
@@ -225,6 +227,7 @@ function SemesterManage() {
     { title: '学期名称', dataIndex: 'semester_name' },
     { title: '开始日期', dataIndex: 'start_date', width: 120 },
     { title: '结束日期', dataIndex: 'end_date', width: 120 },
+    { title: '试晨读周数', dataIndex: 'trial_weeks', width: 100, render: (w: number) => w > 0 ? `${w} 周` : '-' },
     {
       title: '当前学期',
       dataIndex: 'is_current',
@@ -244,6 +247,7 @@ function SemesterManage() {
             form.setFieldsValue({
               ...record,
               date_range: [dayjs(record.start_date), dayjs(record.end_date)],
+              trial_weeks: record.trial_weeks || 0,
               is_current: record.is_current === 1,
             })
             setModalVisible(true)
@@ -272,8 +276,11 @@ function SemesterManage() {
           <Form.Item name="semester_name" label="学期名称" rules={[{ required: true, message: '请输入学期名称' }]}>
             <Input placeholder="如：2026年春季学期" />
           </Form.Item>
-          <Form.Item name="date_range" label="学期日期范围" rules={[{ required: true, message: '请选择日期范围' }]}>
+          <Form.Item name="date_range" label="正式学期日期范围" rules={[{ required: true, message: '请选择日期范围' }]}>
             <RangePicker style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="trial_weeks" label="试晨读周数" tooltip="正式学期开始前的试晨读周数，设为0则无试晨读">
+            <InputNumber min={0} max={10} placeholder="0" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="is_current" label="设为当前学期" valuePropName="checked">
             <Switch />

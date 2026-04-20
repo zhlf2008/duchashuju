@@ -7,11 +7,14 @@ import type { Semester } from '../types'
 
 const { Title, Text } = Typography
 
-/** 根据学期开始日期计算某日期在学期内的周次（从1开始） */
+/** 根据学期开始日期计算某日期在学期内的总周次（从1开始，含试晨读） */
 function getSemesterWeek(date: dayjs.Dayjs, semesterStart: dayjs.Dayjs): number {
   const diff = date.diff(semesterStart, 'day')
-  if (diff < 0) return 0
-  return Math.floor(diff / 7) + 1
+  if (diff >= 0) {
+    return Math.floor(diff / 7) + 1
+  } else {
+    return Math.ceil(Math.abs(diff) / 7)
+  }
 }
 
 /** 获取指定学期周次的起止日期 */
@@ -27,6 +30,15 @@ function getSemesterWeekRange(
 /** 获取学期总周数 */
 function getSemesterTotalWeeks(semesterStart: dayjs.Dayjs, semesterEnd: dayjs.Dayjs): number {
   return getSemesterWeek(semesterEnd, semesterStart)
+}
+
+/** 获取学期周次标签（试晨读/学期） */
+function getSemesterWeekLabel(week: number, trialWeeks: number): string {
+  if (trialWeeks > 0 && week <= trialWeeks) {
+    return `试晨读第${week}周`
+  }
+  const semesterWeek = week - trialWeeks
+  return `学期第${semesterWeek}周`
 }
 
 function WeeklyRanking() {
@@ -137,12 +149,14 @@ function WeeklyRanking() {
 
   const groupRanking = weekSummary.filter((item) => item.org_level?.group_name)
 
-  // 根据学期日期范围生成学期周次选项
+  // 根据学期日期范围生成周次选项（包含试晨读周）
   const semesterWeekOptions = useMemo(() => {
     if (!currentSemester) return []
     const start = dayjs(currentSemester.start_date)
     const end = dayjs(currentSemester.end_date)
-    const totalWeeks = getSemesterTotalWeeks(start, end)
+    const formalWeeks = getSemesterTotalWeeks(start, end)
+    const trialWeeks = currentSemester.trial_weeks || 0
+    const totalWeeks = formalWeeks + trialWeeks
     return Array.from({ length: totalWeeks }, (_, i) => i + 1)
   }, [currentSemester])
 
@@ -205,10 +219,12 @@ function WeeklyRanking() {
               onChange={setSelectedSemesterWeek}
             >
               {semesterWeekOptions.map((w) => {
+                const trialWeeks = currentSemester?.trial_weeks || 0
+                const label = getSemesterWeekLabel(w, trialWeeks)
                 const { start, end } = getSemesterWeekRange(dayjs(currentSemester?.start_date), w)
                 return (
                   <Select.Option key={w} value={w}>
-                    学期第 {w} 周 ({start.format('MM/DD')}-{end.format('MM/DD')})
+                    {label} ({start.format('MM/DD')}-{end.format('MM/DD')})
                   </Select.Option>
                 )
               })}

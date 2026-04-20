@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS semester (
   semester_name VARCHAR(100) NOT NULL,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
+  trial_weeks INTEGER DEFAULT 0 CHECK (trial_weeks >= 0),
   is_current INTEGER DEFAULT 0 CHECK (is_current IN (0, 1)),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
   job_title VARCHAR(50),
   org_id INTEGER REFERENCES org(id) ON DELETE SET NULL,
   role INTEGER DEFAULT 0 CHECK (role IN (0, 1, 2)),
+  password VARCHAR(255),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
