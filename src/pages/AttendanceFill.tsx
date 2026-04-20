@@ -37,13 +37,13 @@ function AttendanceFill() {
       .from('users')
       .select('*')
       .eq('email', user.email)
-      .single()
+      .maybeSingle()
 
     if (userError) console.error('user query error:', userError)
-    console.log('user email:', user.email, 'userData:', userData)
+    console.log('user email:', user.email, 'userData:', userData, 'userError:', userError)
 
     if (!userData) {
-      message.error('用户信息不存在')
+      message.error('用户信息不存在，请联系管理员在 users 表中添加邮箱为 ' + user.email + ' 的记录')
       setLoading(false)
       return
     }
