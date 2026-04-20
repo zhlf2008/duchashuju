@@ -21,6 +21,11 @@ function OrgManage() {
   const [editingAreaId, setEditingAreaId] = useState<number | null>(null)
   const [editingOrgId, setEditingOrgId] = useState<number | null>(null)
   const [addOrgLevel, setAddOrgLevel] = useState<'bigclass' | 'class' | 'group'>('bigclass')
+  // 大班/班级独立编辑
+  const [editBigClassVisible, setEditBigClassVisible] = useState(false)
+  const [editClassVisible, setEditClassVisible] = useState(false)
+  const [editBigClassData, setEditBigClassData] = useState<{ area_id: number; old_big_class: string } | null>(null)
+  const [editClassData, setEditClassData] = useState<{ area_id: number; big_class: string; old_class_name: string } | null>(null)
   const [form] = Form.useForm()
   const [orgForm] = Form.useForm()
   const [formAreaId, setFormAreaId] = useState<number | undefined>()
@@ -152,6 +157,43 @@ function OrgManage() {
       message.error('删除失败: ' + error.message)
     } else {
       message.success('删除成功')
+      fetchData()
+    }
+  }
+
+  // 编辑大班名称（批量更新所有该大班下的org记录）
+  const handleEditBigClass = async (values: { new_big_class: string }) => {
+    if (!editBigClassData) return
+    const { error } = await supabase
+      .from('org')
+      .update({ big_class: values.new_big_class })
+      .eq('area_id', editBigClassData.area_id)
+      .eq('big_class', editBigClassData.old_big_class)
+    if (error) {
+      message.error('修改失败: ' + error.message)
+    } else {
+      message.success('修改成功')
+      setEditBigClassVisible(false)
+      setEditBigClassData(null)
+      fetchData()
+    }
+  }
+
+  // 编辑班级名称（批量更新所有该班级下的org记录）
+  const handleEditClass = async (values: { new_class_name: string }) => {
+    if (!editClassData) return
+    const { error } = await supabase
+      .from('org')
+      .update({ class_name: values.new_class_name })
+      .eq('area_id', editClassData.area_id)
+      .eq('big_class', editClassData.big_class)
+      .eq('class_name', editClassData.old_class_name)
+    if (error) {
+      message.error('修改失败: ' + error.message)
+    } else {
+      message.success('修改成功')
+      setEditClassVisible(false)
+      setEditClassData(null)
       fetchData()
     }
   }
@@ -295,12 +337,8 @@ function OrgManage() {
       const [, areaId, bigClassName] = node.key.split('-')
       actions.push(
         <Button key="edit-bigclass" type="link" size="small" icon={<EditOutlined />} onClick={() => {
-          const existing = orgs.find((o) => o.area_id === Number(areaId) && o.big_class === bigClassName)
-          if (existing) {
-            setEditingOrgId(existing.id)
-            orgForm.setFieldsValue(existing)
-            setOrgModalVisible(true)
-          }
+          setEditBigClassData({ area_id: Number(areaId), old_big_class: bigClassName })
+          setEditBigClassVisible(true)
         }} />
       )
       actions.push(
@@ -326,12 +364,8 @@ function OrgManage() {
       const areaId = orgs.find((o) => o.big_class === bigClassName && o.class_name === className)?.area_id
       actions.push(
         <Button key="edit-class" type="link" size="small" icon={<EditOutlined />} onClick={() => {
-          const existing = orgs.find((o) => o.big_class === bigClassName && o.class_name === className)
-          if (existing) {
-            setEditingOrgId(existing.id)
-            orgForm.setFieldsValue(existing)
-            setOrgModalVisible(true)
-          }
+          setEditClassData({ area_id: areaId!, big_class: bigClassName, old_class_name: className })
+          setEditClassVisible(true)
         }} />
       )
       actions.push(
@@ -474,6 +508,54 @@ function OrgManage() {
             <Input placeholder="如：第1小组" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 编辑大班名称 Modal */}
+      <Modal
+        title="编辑大班"
+        open={editBigClassVisible}
+        onCancel={() => { setEditBigClassVisible(false); setEditBigClassData(null) }}
+        onOk={() => {
+          const newName = (document.getElementById('new-big-class-input') as HTMLInputElement)?.value
+          if (newName) handleEditBigClass({ new_big_class: newName })
+        }}
+      >
+        {editBigClassData && (
+          <div>
+            <div style={{ marginBottom: 8, color: '#666' }}>
+              当前大班：<strong>{editBigClassData.old_big_class}</strong>
+            </div>
+            <Input
+              id="new-big-class-input"
+              placeholder="请输入新大班名称"
+              defaultValue={editBigClassData.old_big_class}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* 编辑班级名称 Modal */}
+      <Modal
+        title="编辑班级"
+        open={editClassVisible}
+        onCancel={() => { setEditClassVisible(false); setEditClassData(null) }}
+        onOk={() => {
+          const newName = (document.getElementById('new-class-name-input') as HTMLInputElement)?.value
+          if (newName) handleEditClass({ new_class_name: newName })
+        }}
+      >
+        {editClassData && (
+          <div>
+            <div style={{ marginBottom: 8, color: '#666' }}>
+              当前班级：<strong>{editClassData.old_class_name}</strong>
+            </div>
+            <Input
+              id="new-class-name-input"
+              placeholder="请输入新班级名称"
+              defaultValue={editClassData.old_class_name}
+            />
+          </div>
+        )}
       </Modal>
     </div>
   )

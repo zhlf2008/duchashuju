@@ -15,7 +15,22 @@ function Login() {
       })
       if (error) throw error
       message.success('登录成功')
-      window.location.href = '/'
+      // 根据角色重定向：管理员去首页，非管理员去考勤填报页
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('email', user.email)
+          .maybeSingle()
+        if (profile?.role === 2) {
+          window.location.href = '/'
+        } else {
+          window.location.href = '/attendance'
+        }
+      } else {
+        window.location.href = '/'
+      }
     } catch (error: any) {
       message.error(error.message || '登录失败')
     } finally {

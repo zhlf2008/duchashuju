@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Typography, Card, Tag } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Typography, Card, Tag, Cascader } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import { supabase } from '../services/supabase'
 import type { User, Org } from '../types'
@@ -15,6 +15,39 @@ function UserManage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form] = Form.useForm()
   const [batchText, setBatchText] = useState('')
+  // 编辑时级联选择器的回显值
+  const [editingOrgPath, setEditingOrgPath] = useState<string[]>([])
+
+  // 级联选择器选项
+  const [orgCascaderOptions, setOrgCascaderOptions] = useState<any[]>([])
+
+  useEffect(() => {
+    const options: any[] = []
+    orgs.forEach((org) => {
+      const areaVal = `${org.area_id}-${org.area?.area_name}`
+      const bcVal = `${org.big_class}`
+      const classVal = `${org.class_name}`
+      const groupVal = `${org.id}`
+
+      let areaNode = options.find((n) => n.value === areaVal)
+      if (!areaNode) {
+        areaNode = { value: areaVal, label: org.area?.area_name || '', children: [] }
+        options.push(areaNode)
+      }
+      let bcNode = areaNode.children.find((n: any) => n.value === `${areaVal}-${bcVal}`)
+      if (!bcNode) {
+        bcNode = { value: `${areaVal}-${bcVal}`, label: bcVal, children: [] }
+        areaNode.children.push(bcNode)
+      }
+      let classNode = bcNode.children.find((n: any) => n.value === `${areaVal}-${bcVal}-${classVal}`)
+      if (!classNode) {
+        classNode = { value: `${areaVal}-${bcVal}-${classVal}`, label: classVal, children: [] }
+        bcNode.children.push(classNode)
+      }
+      classNode.children.push({ value: groupVal, label: org.group_name })
+    })
+    setOrgCascaderOptions(options)
+  }, [orgs])
 
   useEffect(() => {
     fetchData()
@@ -63,6 +96,25 @@ function UserManage() {
       form.resetFields()
       fetchData()
     }
+  }
+
+  // 处理级联选择值变化，org_id 取数组最后一项（小组id）
+  const handleOrgChange = (value: any) => {
+    if (value && value.length > 0) {
+      form.setFieldValue('org_id', Number(value[value.length - 1]))
+    }
+  }
+
+  // 回显时还原级联选择路径
+  const getOrgPath = (orgId: number): string[] => {
+    const org = orgs.find((o) => o.id === orgId)
+    if (!org) return []
+    return [
+      `${org.area_id}-${org.area?.area_name}`,
+      `${org.area_id}-${org.area?.area_name}-${org.big_class}`,
+      `${org.area_id}-${org.area?.area_name}-${org.big_class}-${org.class_name}`,
+      String(org.id),
+    ]
   }
 
   const handleDelete = async (id: number) => {
@@ -153,14 +205,20 @@ function UserManage() {
       title: '角色',
       dataIndex: 'role',
       width: 80,
-      render: (role: number) => role === 2 ? '管理员' : role === 1 ? '填报人' : '成员'
+      render: (role: number) => role === 2 ? '管理员' : role === 1 ? '填报人' : '审核人'
     },
     {
       title: '操作',
       width: 120,
       render: (_: any, record: User) => (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingId(record.id); form.setFieldsValue(record); setModalVisible(true) }} />
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => {
+            setEditingId(record.id)
+            form.resetFields()
+            form.setFieldsValue({ ...record, org_id: record.org_id })
+            setEditingOrgPath(getOrgPath(record.org_id))
+            setModalVisible(true)
+          }} />
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -175,7 +233,7 @@ function UserManage() {
         <Title level={3} style={{ margin: 0 }}>人员管理</Title>
         <Space>
           <Button icon={<UploadOutlined />} onClick={() => setBatchModalVisible(true)}>批量导入</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingId(null); form.resetFields(); setModalVisible(true) }}>新增人员</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingId(null); form.resetFields(); setEditingOrgPath([]); setModalVisible(true) }}>新增人员</Button>
         </Space>
       </div>
 
@@ -201,18 +259,21 @@ function UserManage() {
           <Form.Item name="job_title" label="职务">
             <Input placeholder="职务（可选）" />
           </Form.Item>
-          <Form.Item name="org_id" label="所属组织" rules={[{ required: true, message: '请选择所属组织' }]}>
-            <Select placeholder="请选择组织">
-              {orgs.map((org) => (
-                <Select.Option key={org.id} value={org.id}>
-                  {org.area?.area_name} → {org.big_class} → {org.class_name} → {org.group_name}
-                </Select.Option>
-              ))}
-            </Select>
+          {/* 隐藏的 org_id 字段，实际提交用 */}
+          <Form.Item name="org_id" style={{ display: 'none' }}><Input /></Form.Item>
+          <Form.Item label="所属组织" required>
+            <Cascader
+              value={editingOrgPath}
+              placeholder="请选择组织（地区→大班→班级→小组）"
+              options={orgCascaderOptions}
+              onChange={(val) => { setEditingOrgPath(val || []); handleOrgChange(val) }}
+              allowClear
+              style={{ width: '100%' }}
+            />
           </Form.Item>
           <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
             <Select placeholder="请选择角色">
-              <Select.Option value={0}>成员</Select.Option>
+              <Select.Option value={0}>审核人</Select.Option>
               <Select.Option value={1}>填报人</Select.Option>
               <Select.Option value={2}>管理员</Select.Option>
             </Select>
@@ -261,7 +322,7 @@ function UserManage() {
               </table>
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
-              角色说明：0=成员，1=填报人，2=管理员
+              角色说明：0=审核人，1=填报人，2=管理员
             </div>
           </div>
         </Card>

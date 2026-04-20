@@ -97,7 +97,7 @@ function LayoutPage() {
     }
   }
 
-  const menuItems = [
+  const allMenuItems = [
     { key: '/', icon: <DashboardOutlined />, label: '首页' },
     { key: '/org', icon: <ApartmentOutlined />, label: '组织管理' },
     { key: '/user', icon: <TeamOutlined />, label: '人员管理' },
@@ -105,8 +105,13 @@ function LayoutPage() {
     { key: '/assessment', icon: <CheckSquareOutlined />, label: '考核项目' },
     { key: '/attendance', icon: <FormOutlined />, label: '考勤填报' },
     { key: '/summary', icon: <BarChartOutlined />, label: '数据汇总' },
-    { key: '/ranking', icon: <TrophyOutlined />, label: '周排名' },
+    { key: '/ranking', icon: <TrophyOutlined />, label: '班级榜单' },
   ]
+
+  // 非管理员（role!=2）只能看考勤填报和数据汇总
+  const menuItems = userRole === 2
+    ? allMenuItems
+    : allMenuItems.filter((m) => ['/attendance', '/summary'].includes(m.key))
 
   const userMenuItems: NonNullable<MenuProps['items']>[number][] = [
     {
