@@ -12,7 +12,9 @@ function AssessmentManage() {
   const [form] = Form.useForm()
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   // 可视化字段编辑状态
-  const [fieldList, setFieldList] = useState<{ name: string; type: 'number' | 'text'; required: boolean }[]>([])
+  type FieldType = 'number' | 'text' | 'radio' | 'checkbox' | 'multiSelect' | 'image'
+  const [fieldList, setFieldList] = useState<{ name: string; type: FieldType; required: boolean }[]>([])
+  const [hasFormula, setHasFormula] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -47,12 +49,12 @@ function AssessmentManage() {
     return obj
   }
 
-  const handleAdd = async (values: { item_name: string; formula: string; is_template: boolean }) => {
+  const handleAdd = async (values: { item_name: string; formula?: string; is_template: boolean }) => {
     const fields = buildFieldsObj()
     const { error } = await supabase.from('assessment_item').insert([{
       item_name: values.item_name,
       fields,
-      formula: values.formula,
+      formula: hasFormula ? (values.formula || '') : '',
       is_template: values.is_template ? 1 : 0,
     }])
     if (error) {
@@ -62,18 +64,19 @@ function AssessmentManage() {
       setModalVisible(false)
       setEditingId(null)
       setFieldList([])
+      setHasFormula(false)
       form.resetFields()
       fetchData()
     }
   }
 
-  const handleEdit = async (values: { item_name: string; formula: string; is_template: boolean }) => {
+  const handleEdit = async (values: { item_name: string; formula?: string; is_template: boolean }) => {
     if (!editingId) return
     const fields = buildFieldsObj()
     const { error } = await supabase.from('assessment_item').update({
       item_name: values.item_name,
       fields,
-      formula: values.formula,
+      formula: hasFormula ? (values.formula || '') : '',
       is_template: values.is_template ? 1 : 0,
     }).eq('id', editingId)
     if (error) {
@@ -83,6 +86,7 @@ function AssessmentManage() {
       setModalVisible(false)
       setEditingId(null)
       setFieldList([])
+      setHasFormula(false)
       form.resetFields()
       fetchData()
     }
@@ -148,14 +152,24 @@ function AssessmentManage() {
       render: (fields: any) => {
         if (!fields) return '-'
         if (typeof fields === 'string') fields = JSON.parse(fields)
-        return Object.entries(fields).map(([key, val]) => (
-          <Tag key={key} color={(val as string) === '必填' ? 'blue' : 'default'}>
-            {key} ({val as string})
-          </Tag>
-        ))
+        return Object.entries(fields).map(([key, val]) => {
+          const valStr = val as string
+          let color = 'default'
+          if (valStr.includes('必填')) color = 'blue'
+          if (valStr.includes('数字')) color = 'green'
+          if (valStr.includes('图片')) color = 'purple'
+          if (valStr.includes('单选') || valStr.includes('多选')) color = 'orange'
+          return <Tag key={key} color={color}>{key}</Tag>
+        })
       },
     },
-    { title: '计算公式', dataIndex: 'formula', ellipsis: true },
+    {
+      title: '计算公式',
+      dataIndex: 'formula',
+      width: 150,
+      ellipsis: true,
+      render: (formula: string) => formula ? formula : '-',
+    },
     {
       title: '模板',
       dataIndex: 'is_template',
@@ -176,12 +190,20 @@ function AssessmentManage() {
               if (record.fields) {
                 fieldsObj = typeof record.fields === 'string' ? JSON.parse(record.fields) : record.fields
               }
-              const list = Object.entries(fieldsObj).map(([name, val]) => ({
-                name,
-                type: (val as string).includes('数字') ? 'number' as const : 'text' as const,
-                required: (val as string).includes('必填'),
-              }))
+              const list = Object.entries(fieldsObj).map(([name, val]) => {
+                let type: FieldType = 'text'
+                if ((val as string).includes('数字')) type = 'number'
+                else if ((val as string).includes('单选')) type = 'radio'
+                else if ((val as string).includes('多选')) type = 'checkbox'
+                else if ((val as string).includes('图片')) type = 'image'
+                return {
+                  name,
+                  type,
+                  required: (val as string).includes('必填'),
+                }
+              })
               setFieldList(list)
+              setHasFormula(!!record.formula && record.formula.trim() !== '')
               form.setFieldsValue({
                 item_name: record.item_name,
                 formula: record.formula,
@@ -222,6 +244,7 @@ function AssessmentManage() {
             onClick={() => {
               setEditingId(null)
               setFieldList([])
+              setHasFormula(false)
               form.resetFields()
               setModalVisible(true)
             }}
@@ -245,6 +268,7 @@ function AssessmentManage() {
           setModalVisible(false)
           setEditingId(null)
           setFieldList([])
+          setHasFormula(false)
           form.resetFields()
         }}
         onOk={() => form.submit()}
@@ -261,17 +285,12 @@ function AssessmentManage() {
           >
             <Input placeholder="如：上线率、作业率" />
           </Form.Item>
-          <Form.Item
-            name="item_name"
-            label="项目名称"
-            rules={[{ required: true, message: '请输入项目名称' }]}
-          >
-            <Input placeholder="如：上线率、作业率" />
+          <Form.Item label="需要计算">
+            <Switch checked={hasFormula} onChange={(v) => setHasFormula(v)} checkedChildren="是" unCheckedChildren="否" />
           </Form.Item>
           <Form.Item label="填报字段">
             <Card size="small">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Typography.Text type="secondary">字段名 + 类型 + 是否必填</Typography.Text>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
                 <Button size="small" icon={<PlusOutlined />} onClick={handleAddField}>添加字段</Button>
               </div>
               {fieldList.length === 0 && (
@@ -292,6 +311,10 @@ function AssessmentManage() {
                   >
                     <Select.Option value="number">数字</Select.Option>
                     <Select.Option value="text">文本</Select.Option>
+                    <Select.Option value="radio">单选</Select.Option>
+                    <Select.Option value="checkbox">多选</Select.Option>
+                    <Select.Option value="multiSelect">下拉多选</Select.Option>
+                    <Select.Option value="image">图片上传</Select.Option>
                   </Select>
                   <Checkbox
                     checked={field.required}
@@ -308,14 +331,15 @@ function AssessmentManage() {
               ))}
             </Card>
           </Form.Item>
-          <Form.Item
-            name="formula"
-            label="计算公式"
-            rules={[{ required: true, message: '请输入计算公式' }]}
-            extra='字段名使用中文，如: (实到人数+请假人数)/应到人数*100'
-          >
-            <Input.TextArea rows={2} placeholder="使用字段名和运算符，如: (实到人数+请假人数)/应到人数*100" />
-          </Form.Item>
+          {hasFormula && (
+            <Form.Item
+              name="formula"
+              label="计算公式"
+              extra='字段名使用中文，如: (实到人数+请假人数)/应到人数*100'
+            >
+              <Input.TextArea rows={2} placeholder="使用字段名和运算符，如: (实到人数+请假人数)/应到人数*100" />
+            </Form.Item>
+          )}
           <Form.Item
             name="is_template"
             label="设为模板"
