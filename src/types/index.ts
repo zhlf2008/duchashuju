@@ -20,6 +20,7 @@ export interface Semester {
   semester_name: string
   start_date: string
   end_date: string
+  trial_start_date: string | null
   trial_weeks: number
   is_current: number
   created_at?: string
