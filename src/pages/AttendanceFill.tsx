@@ -33,11 +33,14 @@ function AttendanceFill() {
     }
     setCurrentUser(user)
 
-    const { data: userData } = await supabase
+    const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('email', user.email)
       .single()
+
+    if (userError) console.error('user query error:', userError)
+    console.log('user email:', user.email, 'userData:', userData)
 
     if (!userData) {
       message.error('用户信息不存在')
@@ -45,11 +48,14 @@ function AttendanceFill() {
       return
     }
 
-    const { data: currentSemester } = await supabase
+    const { data: currentSemester, error: semesterError } = await supabase
       .from('semester')
       .select('*')
       .eq('is_current', 1)
       .single()
+
+    if (semesterError) console.error('semester query error:', semesterError)
+    console.log('currentSemester:', currentSemester)
 
     if (!currentSemester) {
       message.warning('当前没有设置学期，请联系管理员')
@@ -59,7 +65,7 @@ function AttendanceFill() {
     setSemester(currentSemester)
 
     // 查询今日及之前的有效日程（包括正式学期开始日当天）
-    const { data: todaySchedule } = await supabase
+    const { data: todaySchedule, error: scheduleError } = await supabase
       .from('semester_schedule')
       .select('*')
       .eq('semester_id', currentSemester.id)
@@ -68,6 +74,9 @@ function AttendanceFill() {
       .order('schedule_date', { ascending: false })
       .limit(1)
       .single()
+
+    if (scheduleError) console.error('schedule query error:', scheduleError)
+    console.log('today:', today, 'semester_id:', currentSemester.id, 'todaySchedule:', todaySchedule)
 
     if (!todaySchedule) {
       message.info('今日无需填报')
