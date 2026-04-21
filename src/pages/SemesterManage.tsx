@@ -324,7 +324,7 @@ function SemesterManage() {
         </Button>
       </div>
 
-      <Table columns={columns} dataSource={data} rowKey="id" loading={loading} />
+<Table columns={columns} dataSource={data} rowKey="id" loading={loading} scroll={{ x: 800 }} />
 
       <Modal title={editingId ? '编辑学期' : '新增学期'} open={modalVisible} onCancel={() => { setModalVisible(false); setEditingId(null); form.resetFields() }} onOk={() => form.submit()} width={500}>
         <Form form={form} onFinish={editingId ? handleEdit : handleAdd} layout="vertical">

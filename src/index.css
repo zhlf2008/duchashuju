@@ -13,3 +13,112 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* ==========================================
+   响应式布局
+   ========================================== */
+
+/* 大屏（> 768px）：内容区左侧留出 Sider 宽度(200px) */
+@media (min-width: 769px) {
+  .layout-main {
+    margin-left: 200px !important;
+  }
+}
+
+/* 小屏（<= 768px）：侧边栏隐藏，显示 hamburger */
+@media (max-width: 768px) {
+  /* 隐藏 PC 端侧边栏 */
+  .ant-layout-sider {
+    display: none !important;
+  }
+
+  /* 移动端 hamburger 按钮显示 */
+  .mobile-menu-btn {
+    display: inline-flex !important;
+  }
+
+  /* 内容区铺满 */
+  .layout-main {
+    margin-left: 0 !important;
+  }
+
+  /* 内容区内边距压缩 */
+  .main-content {
+    padding: 12px !important;
+  }
+
+  /* Header padding 压缩 */
+  .ant-layout-header {
+    padding: 0 12px !important;
+  }
+
+  /* 表格横向滚动 */
+  .ant-table-wrapper {
+    overflow-x: auto !important;
+  }
+
+  /* 页面标题字号缩小 */
+  .ant-typography h2,
+  .ant-typography h3 {
+    font-size: 16px !important;
+  }
+
+  /* Modal 宽度自适应 */
+  .ant-modal {
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
+  }
+
+  /* Modal 内容 padding 压缩 */
+  .ant-modal-body {
+    padding: 16px !important;
+  }
+
+  /* 表单项间距压缩 */
+  .ant-form-item {
+    margin-bottom: 12px !important;
+  }
+
+  /* Card padding 压缩 */
+  .ant-card-body {
+    padding: 12px !important;
+  }
+
+  /* Tree 树节点文字不换行 */
+  .ant-tree-node-content-wrapper {
+    white-space: nowrap !important;
+  }
+
+  /* 表单操作按钮不换行 */
+  .ant-space {
+    flex-wrap: nowrap !important;
+  }
+
+  /* Header 邮箱文字在小屏隐藏 */
+  .header-email {
+    display: none;
+  }
+}
+
+/* 中屏（769px - 1024px） */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .main-content {
+    padding: 16px !important;
+  }
+}
+
+/* 超小屏（<= 480px）额外调整 */
+@media (max-width: 480px) {
+  .main-content {
+    padding: 8px !important;
+  }
+
+  .ant-btn {
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+  }
+
+  .ant-form label {
+    font-size: 13px !important;
+  }
+}

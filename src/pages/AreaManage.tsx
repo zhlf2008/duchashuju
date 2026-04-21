@@ -111,6 +111,7 @@ function AreaManage() {
         dataSource={data}
         rowKey="id"
         loading={loading}
+        scroll={{ x: 600 }}
       />
       <Modal
         title={editingId ? '编辑地区' : '新增地区'}

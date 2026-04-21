@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Layout, Menu, Avatar, Dropdown, Modal, Form, Input, Button, message } from 'antd'
+import { Layout, Menu, Avatar, Dropdown, Modal, Form, Input, Button, message, Drawer } from 'antd'
 import type { MenuProps } from 'antd'
-import { SettingOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons'
+import { SettingOutlined, LogoutOutlined, UserOutlined, MenuOutlined } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   DashboardOutlined,
@@ -28,6 +28,8 @@ function LayoutPage() {
   const [passwordForm] = Form.useForm()
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  // 移动端菜单抽屉
+  const [drawerVisible, setDrawerVisible] = useState(false)
 
   useEffect(() => {
     const getUser = async () => {
@@ -74,7 +76,6 @@ function LayoutPage() {
   const handleChangePassword = async (values: { oldPassword: string; newPassword: string }) => {
     if (!user) return
     setSavingPassword(true)
-    // 先用旧密码尝试登录验证
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: user.email,
       password: values.oldPassword,
@@ -84,7 +85,6 @@ function LayoutPage() {
       setSavingPassword(false)
       return
     }
-    // 原密码正确，更新新密码
     const { error: updateError } = await supabase.auth.updateUser({
       password: values.newPassword,
     })
@@ -108,7 +108,6 @@ function LayoutPage() {
     { key: '/ranking', icon: <TrophyOutlined />, label: '班级榜单' },
   ]
 
-  // 非管理员（role!=2）只能看考勤填报和数据汇总
   const menuItems = userRole === 2
     ? allMenuItems
     : allMenuItems.filter((m) => ['/attendance', '/summary'].includes(m.key))
@@ -124,13 +123,17 @@ function LayoutPage() {
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ]
 
+  const handleMenuClick = ({ key }: { key: string }) => {
+    setDrawerVisible(false)
+    navigate(key)
+  }
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+<Layout style={{ minHeight: '100vh' }}>
+      {/* PC Sidebar: hidden on mobile via CSS, drawer used instead */}
       <Sider
         theme="dark"
-        breakpoint="lg"
-        collapsedWidth="0"
-        onBreakpoint={(broken) => console.log(broken)}
+        style={{ minHeight: '100vh', overflow: 'auto' }}
       >
         <div style={{
           height: 64,
@@ -139,7 +142,8 @@ function LayoutPage() {
           justifyContent: 'center',
           color: 'white',
           fontSize: 18,
-          fontWeight: 'bold'
+          fontWeight: 'bold',
+          flexShrink: 0,
         }}>
           督察管理系统
         </div>
@@ -148,32 +152,68 @@ function LayoutPage() {
           mode="inline"
           selectedKeys={[location.pathname]}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={handleMenuClick}
         />
       </Sider>
-      <Layout>
+
+      <Layout className="layout-main">
         <Header style={{
           background: '#fff',
-          padding: '0 24px',
+          padding: '0 16px',
           display: 'flex',
-          justifyContent: 'flex-end',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: '1px solid #f0f0f0'
+          borderBottom: '1px solid #f0f0f0',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
         }}>
+          {/* 移动端 hamburger 按钮 */}
+          <Button
+            type="text"
+            icon={<MenuOutlined />}
+            onClick={() => setDrawerVisible(true)}
+            className="mobile-menu-btn"
+            style={{ display: 'none' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+            <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
+            <span className="header-email">{user?.email || '用户'}</span>
+            <span style={{ marginLeft: 8, fontSize: 12, color: '#999' }}>
+              {userRole === 2 ? '管理员' : userRole === 1 ? '填报人' : '成员'}
+            </span>
+          </div>
           <Dropdown menu={{ items: userMenuItems, onClick: ({ key }) => key === 'logout' && handleLogout() }} placement="bottomRight">
-            <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
-              <span>{user?.email || '用户'}</span>
-              <span style={{ marginLeft: 8, fontSize: 12, color: '#999' }}>
-                {userRole === 2 ? '管理员' : userRole === 1 ? '填报人' : '成员'}
-              </span>
-            </div>
+            <Button type="text" style={{ marginLeft: 8 }}>⋮</Button>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 24, background: '#fff', padding: 24, borderRadius: 8 }}>
+
+        <Content style={{
+          padding: 24,
+          background: '#fff',
+          minHeight: 'calc(100vh - 64px)',
+        }} className="main-content">
           <Outlet />
         </Content>
       </Layout>
+
+      {/* 移动端抽屉菜单 */}
+      <Drawer
+        title="督察管理系统"
+        placement="left"
+        onClose={() => setDrawerVisible(false)}
+        open={drawerVisible}
+        width={260}
+        styles={{ body: { padding: 0 } }}
+      >
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[location.pathname]}
+          items={menuItems}
+          onClick={handleMenuClick}
+        />
+      </Drawer>
 
       <Modal
         title="个人设置"
