@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Typography, Card, Tag, Cascader } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Space, Typography, Card, Cascader } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
-import { supabase } from '../services/supabase'
+import { supabase, supabaseAdmin } from '../services/supabase'
 import type { User, Org } from '../types'
 
 const { Title, Text } = Typography
@@ -72,14 +72,40 @@ function UserManage() {
     if (data) setOrgs(data)
   }
 
-  const handleAdd = async (values: { name: string; email?: string; phone: string; job_title?: string; org_id: number; role: number }) => {
-    // 人员必须从 Auth 注册（自动创建 users 记录），此处仅补全信息
-    // 若确需手动添加，占位 email
-    const insertValues = {
-      ...values,
-      email: values.email || `manual_${Date.now()}@placeholder.local`,
+  // 创建 auth 账号（密码=手机号后6位），返回 auth user email
+  const createAuthUser = async (phone: string): Promise<string | null> => {
+    if (!supabaseAdmin) {
+      console.warn('supabaseAdmin not configured, skipping auth creation')
+      return `manual_${Date.now()}@placeholder.local`
     }
-    const { error } = await supabase.from('users').insert([insertValues])
+    const password = phone.slice(-6)
+    const email = `${phone}@phone.local`
+    const { error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    })
+    if (error) {
+      console.error('createAuthUser error:', error)
+      return null
+    }
+    return email
+  }
+
+  const handleAdd = async (values: { name: string; phone: string; job_title?: string; org_id: number; role: number }) => {
+    const email = await createAuthUser(values.phone)
+    if (!email) {
+      message.error('添加失败：无法创建登录账号（请检查 SERVICE_KEY 配置）')
+      return
+    }
+    const { error } = await supabase.from('users').insert([{
+      name: values.name,
+      email,
+      phone: values.phone,
+      job_title: values.job_title || null,
+      org_id: values.org_id,
+      role: values.role,
+    }])
     if (error) {
       message.error('添加失败: ' + error.message)
     } else {
@@ -90,15 +116,15 @@ function UserManage() {
     }
   }
 
-  const handleEdit = async (values: { name: string; email?: string; phone: string; job_title?: string; org_id: number; role: number }) => {
+  const handleEdit = async (values: { name: string; phone: string; job_title?: string; org_id: number; role: number }) => {
     if (!editingId) return
-    // 如果 email 被清空，保留原值
-    const existing = data.find((u) => u.id === editingId)
-    const updateValues = {
-      ...values,
-      email: values.email || existing?.email || `manual_${Date.now()}@placeholder.local`,
-    }
-    const { error } = await supabase.from('users').update(updateValues).eq('id', editingId)
+    const { error } = await supabase.from('users').update({
+      name: values.name,
+      phone: values.phone,
+      job_title: values.job_title || null,
+      org_id: values.org_id,
+      role: values.role,
+    }).eq('id', editingId)
     if (error) {
       message.error('修改失败: ' + error.message)
     } else {
@@ -146,43 +172,51 @@ function UserManage() {
     }
 
     const lines = batchText.trim().split('\n')
-    const users: any[] = []
     const errors: string[] = []
+    let successCount = 0
 
-    lines.forEach((line, index) => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
       const parts = line.split(/[\t,]/).map((p) => p.trim())
       if (parts.length < 4) {
-        errors.push(`第 ${index + 1} 行格式错误：需要至少4列（姓名、手机号、组织ID、角色）`)
-        return
+        errors.push(`第 ${i + 1} 行格式错误：需要4列（姓名、手机号、组织ID、角色）`)
+        continue
       }
 
-      const [name, phone, orgIdStr, roleStr, email] = parts
+      const [name, phone, orgIdStr, roleStr] = parts
       const orgId = parseInt(orgIdStr)
       const role = parseInt(roleStr) || 0
 
       if (!name || !phone) {
-        errors.push(`第 ${index + 1} 行：姓名和手机号不能为空`)
-        return
+        errors.push(`第 ${i + 1} 行：姓名和手机号不能为空`)
+        continue
       }
-
       if (isNaN(orgId)) {
-        errors.push(`第 ${index + 1} 行：组织ID必须是数字`)
-        return
+        errors.push(`第 ${i + 1} 行：组织ID必须是数字`)
+        continue
       }
 
-      users.push({ name, phone, org_id: orgId, role, email: email || undefined })
-    })
+      const email = await createAuthUser(phone)
+      if (!email) {
+        errors.push(`第 ${i + 1} 行：创建登录账号失败`)
+        continue
+      }
+
+      const { error } = await supabase.from('users').insert([{
+        name, email, phone, org_id: orgId, role,
+      }])
+      if (error) {
+        errors.push(`第 ${i + 1} 行：${error.message}`)
+      } else {
+        successCount++
+      }
+    }
 
     if (errors.length > 0) {
       message.error(errors.slice(0, 3).join('\n'))
-      return
     }
-
-    const { error } = await supabase.from('users').insert(users)
-    if (error) {
-      message.error('批量导入失败: ' + error.message)
-    } else {
-      message.success(`成功导入 ${users.length} 条记录`)
+    if (successCount > 0) {
+      message.success(`成功导入 ${successCount} 条记录`)
       setBatchModalVisible(false)
       setBatchText('')
       fetchData()
@@ -190,7 +224,7 @@ function UserManage() {
   }
 
   const downloadTemplate = () => {
-    const template = '姓名,邮箱,手机号,组织ID,角色\n张三,zhangsan@example.com,13800138000,1,0\n李四,,13900139000,2,1'
+    const template = '姓名,手机号,组织ID,角色\n张三,13800138000,1,0\n李四,13900139000,2,1'
     const blob = new Blob([template], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -209,10 +243,9 @@ function UserManage() {
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
     { title: '姓名', dataIndex: 'name', width: 100 },
-    { title: '邮箱', dataIndex: 'email', width: 180 },
-    { title: '手机号', dataIndex: 'phone', width: 120 },
+    { title: '手机号', dataIndex: 'phone', width: 130 },
     { title: '职务', dataIndex: 'job_title', width: 80 },
-    { title: '所属组织', dataIndex: 'org_id', width: 250, render: (orgId: number) => getOrgName(orgId) },
+    { title: '所属组织', dataIndex: 'org_id', width: 280, render: (orgId: number) => getOrgName(orgId) },
     {
       title: '角色',
       dataIndex: 'role',
@@ -254,7 +287,7 @@ function UserManage() {
         dataSource={data}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1000 }}
       />
 
       <Modal title={editingId ? '编辑人员' : '新增人员'} open={modalVisible} onCancel={() => { setModalVisible(false); setEditingId(null); form.resetFields() }} onOk={() => form.submit()} width={500}>
@@ -263,10 +296,7 @@ function UserManage() {
             <Input placeholder="请输入姓名" />
           </Form.Item>
           <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
-            <Input placeholder="手机号" />
-          </Form.Item>
-          <Form.Item name="email" label="邮箱">
-            <Input placeholder="邮箱（可选）" />
+            <Input placeholder="手机号（初始密码为手机号后6位）" />
           </Form.Item>
           <Form.Item name="job_title" label="职务">
             <Input placeholder="职务（可选）" />
@@ -293,23 +323,16 @@ function UserManage() {
         </Form>
       </Modal>
 
-      <Modal title="批量导入人员" open={batchModalVisible} onCancel={() => { setBatchModalVisible(false); setBatchText('') }} onOk={handleBatchImport} width={700}
-        footer={[
-          <Button key="download" icon={<DownloadOutlined />} onClick={downloadTemplate}>下载模板</Button>,
-          <Button key="cancel" onClick={() => setBatchModalVisible(false)}>取消</Button>,
-          <Button key="import" type="primary" onClick={handleBatchImport}>导入</Button>
-        ]}
-      >
+      <Modal title="批量导入人员" open={batchModalVisible} onCancel={() => { setBatchModalVisible(false); setBatchText('') }} footer={null} width={700}>
         <Card size="small" style={{ marginBottom: 16 }}>
-          <Text type="secondary">格式说明：每行一条记录，列之间用 Tab 或逗号分隔。手机号必填，邮箱可选。</Text>
+          <Text type="secondary">格式：每行一条记录，Tab 或逗号分隔。导入时自动创建登录账号（密码=手机号后6位）。</Text>
           <div style={{ marginTop: 12 }}>
-            <Text type="secondary">模板示例（复制到下方文本框）：</Text>
+            <Text type="secondary">模板示例：</Text>
             <div style={{ overflowX: 'auto', marginTop: 8 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 500 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 400 }}>
                 <thead>
                   <tr style={{ background: '#f5f5f5' }}>
                     <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>姓名</th>
-                    <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>邮箱<Tag color="default" style={{ marginLeft: 4, fontSize: 10 }}>可选</Tag></th>
                     <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap', color: 'red' }}>手机号*</th>
                     <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>组织ID</th>
                     <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>角色</th>
@@ -318,14 +341,12 @@ function UserManage() {
                 <tbody>
                   <tr>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>张三</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>zhangsan@example.com</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>13800138000</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>1</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>0</td>
                   </tr>
                   <tr style={{ background: '#fafafa' }}>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>李四</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}></td>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>13900139000</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>2</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px 8px', whiteSpace: 'nowrap' }}>1</td>
@@ -336,9 +357,14 @@ function UserManage() {
             <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
               角色说明：0=审核人，1=填报人，2=管理员
             </div>
+            <Button icon={<DownloadOutlined />} onClick={downloadTemplate} style={{ marginTop: 8 }}>下载模板</Button>
           </div>
         </Card>
         <Input.TextArea rows={10} value={batchText} onChange={(e) => setBatchText(e.target.value)} placeholder="从 Excel 复制数据粘贴到此处（支持 Tab 或逗号分隔）" />
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <Button onClick={() => setBatchModalVisible(false)}>取消</Button>
+          <Button type="primary" style={{ marginLeft: 8 }} onClick={handleBatchImport}>导入</Button>
+        </div>
       </Modal>
     </div>
   )
