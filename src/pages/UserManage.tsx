@@ -9,6 +9,7 @@ const { Title, Text } = Typography
 function UserManage() {
   const [data, setData] = useState<User[]>([])
   const [orgs, setOrgs] = useState<Org[]>([])
+  const [areas, setAreas] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [batchModalVisible, setBatchModalVisible] = useState(false)
@@ -52,6 +53,7 @@ function UserManage() {
   useEffect(() => {
     fetchData()
     fetchOrgs()
+    fetchAreas()
   }, [])
 
   const fetchData = async () => {
@@ -70,6 +72,11 @@ function UserManage() {
       .select('*, area:area_id(area_name)')
       .order('id')
     if (data) setOrgs(data)
+  }
+
+  const fetchAreas = async () => {
+    const { data } = await supabase.from('area').select('*').order('id')
+    if (data) setAreas(data)
   }
 
   // 创建 auth 账号（密码=手机号后6位），返回 auth user email
@@ -178,21 +185,79 @@ function UserManage() {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       const parts = line.split(/[\t,]/).map((p) => p.trim())
-      if (parts.length < 4) {
-        errors.push(`第 ${i + 1} 行格式错误：需要4列（姓名、手机号、组织ID、角色）`)
+      if (parts.length < 6) {
+        errors.push(`第 ${i + 1} 行格式错误：需要6列（姓名、手机号、地区、大班、班级、小组）`)
         continue
       }
 
-      const [name, phone, orgIdStr, roleStr] = parts
-      const orgId = parseInt(orgIdStr)
-      const role = parseInt(roleStr) || 0
+      const [name, phone, areaName, bigClass, className, groupName] = parts
 
       if (!name || !phone) {
         errors.push(`第 ${i + 1} 行：姓名和手机号不能为空`)
         continue
       }
-      if (isNaN(orgId)) {
-        errors.push(`第 ${i + 1} 行：组织ID必须是数字`)
+
+      // 查找或创建地区
+      let area = areas.find((a) => a.area_name === areaName)
+      if (!area) {
+        const { data: newArea } = await supabase.from('area').insert({ area_name: areaName }).select().single()
+        if (newArea) {
+          area = newArea
+          setAreas((prev) => [...prev, area!])
+        }
+      }
+      if (!area) {
+        errors.push(`第 ${i + 1} 行：无法创建地区 "${areaName}"`)
+        continue
+      }
+
+      // 角色由组织层级决定：填了小组=填报人(1)，没填小组=审核人(0)
+      const role = groupName ? 1 : 0
+
+      // 查找或创建组织
+      // 先在本地 orgs 中找
+      let org = orgs.find((o) =>
+        o.area_id === area!.id &&
+        o.big_class === bigClass &&
+        o.class_name === className &&
+        (role === 1 ? o.group_name === groupName : !o.group_name)
+      )
+
+      if (!org) {
+        // 查询数据库确认
+        let query = supabase.from('org')
+          .select('*')
+          .eq('area_id', area!.id)
+          .eq('big_class', bigClass)
+          .eq('class_name', className)
+        if (role === 1) {
+          query = query.eq('group_name', groupName)
+        } else {
+          query = query.is('group_name', null)
+        }
+        const { data: dbOrg } = await query.maybeSingle()
+
+        if (dbOrg) {
+          org = dbOrg
+        } else {
+          // 创建新组织
+          const insertData: any = {
+            area_id: area!.id,
+            big_class: bigClass,
+            class_name: className,
+          }
+          if (role === 1) insertData.group_name = groupName
+
+          const { data: newOrg } = await supabase.from('org').insert(insertData).select().single()
+          if (newOrg) {
+            org = newOrg
+            setOrgs((prev) => [...prev, org!])
+          }
+        }
+      }
+
+      if (!org) {
+        errors.push(`第 ${i + 1} 行：无法创建组织`)
         continue
       }
 
@@ -203,7 +268,7 @@ function UserManage() {
       }
 
       const { error } = await supabase.from('users').insert([{
-        name, email, phone, org_id: orgId, role,
+        name, email, phone, org_id: org.id, role,
       }])
       if (error) {
         errors.push(`第 ${i + 1} 行：${error.message}`)
@@ -224,7 +289,7 @@ function UserManage() {
   }
 
   const downloadTemplate = () => {
-    const template = '姓名,手机号,组织ID,角色\n张三,13800138000,1,0\n李四,13900139000,2,1'
+    const template = '姓名,手机号,地区,大班,班级,小组\n张三,13800138000,北京,一大班,一班,一组\n李四,13900139000,北京,一大班,一班,'
     const blob = new Blob([template], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
