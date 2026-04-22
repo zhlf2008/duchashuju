@@ -11,10 +11,15 @@ import AssessmentManage from './pages/AssessmentManage'
 import AttendanceFill from './pages/AttendanceFill'
 import DataSummary from './pages/DataSummary'
 import WeeklyRanking from './pages/WeeklyRanking'
+import MobileLayout from './pages/mobile/MobileLayout'
+import MobileFill from './pages/mobile/MobileFill'
+import MobileHistory from './pages/mobile/MobileHistory'
+import MobileSettings from './pages/mobile/MobileSettings'
 
 function App() {
   const [user, setUser] = useState<any>(null)
   const [userRole, setUserRole] = useState<number>(0)
+  const [userOrgId, setUserOrgId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -24,10 +29,11 @@ function App() {
       if (u) {
         const { data } = await supabase
           .from('users')
-          .select('role')
+          .select('role, org_id')
           .eq('email', u.email)
           .maybeSingle()
         setUserRole(data?.role ?? 0)
+        setUserOrgId(data?.org_id ?? null)
       }
       setLoading(false)
     })
@@ -37,28 +43,42 @@ function App() {
     return <div style={{ padding: '50px', textAlign: 'center' }}>加载中...</div>
   }
 
-  // 路由守卫：非管理员（role!=2）只能访问考勤填报和数据汇总
-  const ProtectedRoute = ({ children, path }: { children: React.ReactNode; path: string }) => {
+  // 管理员专属路由守卫
+  const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     if (!user) return <Navigate to="/login" replace />
-    // 非管理员访问管理页面 → 跳转考勤填报
-    if (userRole !== 2 && ['/org', '/user', '/semester', '/assessment', '/ranking'].includes(path)) {
-      return <Navigate to="/attendance" replace />
-    }
+    if (userRole !== 2) return <Navigate to="/mobile/fill" replace />
+    return <>{children}</>
+  }
+
+  // 手机端路由守卫（非管理员专属）
+  const MobileRoute = ({ children }: { children: React.ReactNode }) => {
+    if (!user) return <Navigate to="/login" replace />
+    if (userRole === 2) return <Navigate to="/" replace />
     return <>{children}</>
   }
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/attendance" /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={userRole === 2 ? '/' : '/mobile/fill'} /> : <Login />} />
+
+      {/* 管理后台（仅管理员可访问） */}
       <Route path="/" element={user ? <Layout /> : <Navigate to="/login" />}>
-        <Route index element={<ProtectedRoute path="/"><Dashboard /></ProtectedRoute>} />
-        <Route path="org" element={<ProtectedRoute path="/org"><OrgManage /></ProtectedRoute>} />
-        <Route path="user" element={<ProtectedRoute path="/user"><UserManage /></ProtectedRoute>} />
-        <Route path="semester" element={<ProtectedRoute path="/semester"><SemesterManage /></ProtectedRoute>} />
-        <Route path="assessment" element={<ProtectedRoute path="/assessment"><AssessmentManage /></ProtectedRoute>} />
-        <Route path="attendance" element={<AttendanceFill />} />
-        <Route path="summary" element={<DataSummary />} />
-        <Route path="ranking" element={<ProtectedRoute path="/ranking"><WeeklyRanking /></ProtectedRoute>} />
+        <Route index element={<AdminRoute><Dashboard /></AdminRoute>} />
+        <Route path="org" element={<AdminRoute><OrgManage /></AdminRoute>} />
+        <Route path="user" element={<AdminRoute><UserManage /></AdminRoute>} />
+        <Route path="semester" element={<AdminRoute><SemesterManage /></AdminRoute>} />
+        <Route path="assessment" element={<AdminRoute><AssessmentManage /></AdminRoute>} />
+        <Route path="attendance" element={<AdminRoute><AttendanceFill /></AdminRoute>} />
+        <Route path="summary" element={<AdminRoute><DataSummary /></AdminRoute>} />
+        <Route path="ranking" element={<AdminRoute><WeeklyRanking /></AdminRoute>} />
+      </Route>
+
+      {/* 手机端页面（非管理员专属） */}
+      <Route path="/mobile" element={<MobileRoute><MobileLayout userOrgId={userOrgId} /></MobileRoute>}>
+        <Route index element={<Navigate to="/mobile/fill" />} />
+        <Route path="fill" element={<MobileFill userOrgId={userOrgId} />} />
+        <Route path="history" element={<MobileHistory userOrgId={userOrgId} />} />
+        <Route path="settings" element={<MobileSettings />} />
       </Route>
     </Routes>
   )
