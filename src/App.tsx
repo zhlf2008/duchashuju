@@ -77,7 +77,7 @@ function App() {
       <Route path="/mobile" element={<MobileRoute><MobileLayout userOrgId={userOrgId} /></MobileRoute>}>
         <Route index element={<Navigate to="/mobile/fill" />} />
         <Route path="fill" element={<MobileFill userOrgId={userOrgId} />} />
-        <Route path="history" element={<MobileHistory userOrgId={userOrgId} />} />
+        <Route path="history" element={<MobileHistory userOrgId={userOrgId} userRole={userRole} />} />
         <Route path="settings" element={<MobileSettings />} />
       </Route>
     </Routes>

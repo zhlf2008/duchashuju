@@ -7,6 +7,7 @@ const { Title, Text } = Typography
 
 interface MobileHistoryProps {
   userOrgId: number | null
+  userRole?: number
 }
 
 interface HistoryItem {
@@ -20,19 +21,22 @@ interface HistoryItem {
   created_at: string
 }
 
-function MobileHistory({ userOrgId }: MobileHistoryProps) {
+function MobileHistory({ userOrgId, userRole }: MobileHistoryProps) {
   const [loading, setLoading] = useState(true)
   const [history, setHistory] = useState<HistoryItem[]>([])
 
   useEffect(() => {
     loadHistory()
-  }, [userOrgId])
+  }, [userOrgId, userRole])
 
   const loadHistory = async () => {
     if (!userOrgId) { setLoading(false); return }
 
     setLoading(true)
-    const { data } = await supabase
+
+    // 审核人(role=0)：查询本级及以下所有组织的数据
+    // 填报人(role=1)：只查本组织
+    let query = supabase
       .from('attendance')
       .select(`
         id,
@@ -43,9 +47,59 @@ function MobileHistory({ userOrgId }: MobileHistoryProps) {
         schedule:schedule_id(id, schedule_date, week_day, semester_id),
         semester:semester_id(id, semester_name)
       `)
-      .eq('org_id', userOrgId)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .limit(100)
+
+    if (userRole === 0) {
+      // 审核人：查本组织及所有子组织
+      const { data: orgData } = await supabase
+        .from('org')
+        .select('*')
+        .eq('id', userOrgId)
+        .maybeSingle()
+
+      if (orgData) {
+        const level = !orgData.group_name ? 'area'
+          : !orgData.class_name ? 'bigclass'
+          : !orgData.big_class ? 'class' : 'group'
+
+        if (level === 'area') {
+          // 地区级：查同一 area_id 下的所有组织
+          const { data: subOrgs } = await supabase
+            .from('org')
+            .select('id')
+            .eq('area_id', orgData.area_id)
+          const ids = subOrgs?.map(o => o.id) ?? []
+          query = query.in('org_id', ids)
+        } else if (level === 'bigclass') {
+          // 大班级：查同一大班下的所有组织
+          const { data: subOrgs } = await supabase
+            .from('org')
+            .select('id')
+            .eq('big_class', orgData.big_class)
+          const ids = subOrgs?.map(o => o.id) ?? []
+          query = query.in('org_id', ids)
+        } else if (level === 'class') {
+          // 班级：查同一班级下的所有小组
+          const { data: subOrgs } = await supabase
+            .from('org')
+            .select('id')
+            .eq('class_name', orgData.class_name)
+          const ids = subOrgs?.map(o => o.id) ?? []
+          query = query.in('org_id', ids)
+        } else {
+          // 小组：只查本组
+          query = query.eq('org_id', userOrgId)
+        }
+      } else {
+        query = query.eq('org_id', userOrgId)
+      }
+    } else {
+      // 填报人：只查本组织
+      query = query.eq('org_id', userOrgId)
+    }
+
+    const { data } = await query
 
     if (data) {
       const items: HistoryItem[] = data.map((d: any) => ({
